@@ -250,6 +250,18 @@ function ShopProvider({ children }) {
     return { ok: true, admin: ADMIN_EMAILS.includes(data.user.email) };
   }, []);
 
+  const verifySignupCode = useCallback(async (email, token) => {
+    const { error } = await supabase.auth.verifyOtp({ email, token, type: "signup" });
+    if (error) return { ok: false, error: "Неверный или устаревший код. Проверьте и попробуйте снова." };
+    return { ok: true };
+  }, []);
+
+  const resendSignupCode = useCallback(async (email) => {
+    const { error } = await supabase.auth.resend({ type: "signup", email });
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  }, []);
+
   const logout = useCallback(async () => {
     await supabase.auth.signOut();
   }, []);
@@ -343,12 +355,12 @@ function ShopProvider({ children }) {
   /* --- Товары (админ) --- */
   const addProduct = useCallback(async (product) => {
     const { data, error } = await supabase.from("products").insert(mapProductToDb(product)).select().single();
-    if (error) { showToast("Ошибка добавления товара"); return; }
+    if (error) { showToast("Ошибка: " + error.message); return; }
     setProducts((ps) => [mapProductFromDb(data), ...ps]);
   }, [showToast]);
   const updateProduct = useCallback(async (id, patch) => {
     const { data, error } = await supabase.from("products").update(mapProductToDb({ ...patch })).eq("id", id).select().single();
-    if (error) { showToast("Ошибка обновления товара"); return; }
+    if (error) { showToast("Ошибка: " + error.message); return; }
     setProducts((ps) => ps.map((p) => (p.id === id ? mapProductFromDb(data) : p)));
   }, [showToast]);
   const deleteProduct = useCallback(async (id) => {
@@ -399,7 +411,7 @@ function ShopProvider({ children }) {
   const value = {
     ready, products, reviews, news, promos, orders, users, cart, favorites, customRequests, notifications,
     currentUser, isAdmin, toast, showToast,
-    register, login, logout, updateProfile,
+    register, login, logout, updateProfile, verifySignupCode, resendSignupCode,
     addToCart, updateCartQty, removeFromCart, clearCart,
     toggleFavorite, createOrder, updateOrderStatus,
     addProduct, updateProduct, deleteProduct,
@@ -1256,14 +1268,23 @@ function CheckoutPage({ go }) {
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const submit = () => {
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async () => {
     if (!form.firstName || !form.lastName || !form.phone || !form.address || !form.city) {
       setError("Заполните все обязательные поля.");
       return;
     }
     if (!confirmed) { setError("Подтвердите, что данные верны."); return; }
-    const order = createOrder(form, items);
-    setOrderResult(order);
+    setError("");
+    setSubmitting(true);
+    try {
+      const order = await createOrder(form, items);
+      if (!order) { setError("Не удалось оформить заказ. Попробуйте ещё раз."); return; }
+      setOrderResult(order);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (items.length === 0 && !orderResult) {
@@ -1333,7 +1354,7 @@ function CheckoutPage({ go }) {
               ))}
             </div>
             <div className="flex justify-between text-[18px] font-display text-ink pt-3 border-t border-line mb-5"><span>Итого</span><span>{formatPrice(total)}</span></div>
-            <PrimaryButton full onClick={submit}>Подтвердить заказ</PrimaryButton>
+            <PrimaryButton full onClick={submit} disabled={submitting}>{submitting ? "Оформляем…" : "Подтвердить заказ"}</PrimaryButton>
             <p className="text-[11.5px] text-stone mt-2 text-center">Оплата не автоматическая — мы свяжемся с вами для согласования способа оплаты.</p>
           </div>
         </div>
@@ -1356,10 +1377,13 @@ function Field({ label, value, onChange, placeholder, type = "text" }) {
    ========================================================= */
 
 function AuthPage({ go, redirectTo }) {
-  const { register, login } = useShop();
+  const { register, login, verifySignupCode, resendSignupCode } = useShop();
   const [mode, setMode] = useState("login"); // login | register
+  const [step, setStep] = useState("form"); // form | code
   const [form, setForm] = useState({ name: "", phone: "", email: "", password: "", password2: "" });
+  const [code, setCode] = useState("");
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const [loading, setLoading] = useState(false);
@@ -1379,12 +1403,50 @@ function AuthPage({ go, redirectTo }) {
         const res = await register(form);
         if (!res.ok) return setError(res.error);
         setError("");
-        go(redirectTo || "account");
+        setStep("code");
       }
     } finally {
       setLoading(false);
     }
   };
+
+  const submitCode = async () => {
+    setError("");
+    if (!code || code.trim().length < 4) { setError("Введите код из письма."); return; }
+    setLoading(true);
+    try {
+      const res = await verifySignupCode(form.email, code.trim());
+      if (!res.ok) { setError(res.error); return; }
+      go(redirectTo || "account");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resend = async () => {
+    setError(""); setInfo("");
+    const res = await resendSignupCode(form.email);
+    setInfo(res.ok ? "Код отправлен повторно." : (res.error || "Не удалось отправить код."));
+  };
+
+  if (step === "code") {
+    return (
+      <Section className="pt-10 pb-20">
+        <div className="max-w-sm mx-auto">
+          <h1 className="font-display text-[28px] text-ink mb-1 text-center">Подтверждение почты</h1>
+          <p className="text-[13.5px] text-stone text-center mb-6">Мы отправили код на {form.email}. Введите его ниже.</p>
+
+          <Field label="Код из письма" value={code} onChange={(e) => setCode(e.target.value)} placeholder="123456" />
+
+          {error && <div className="text-[13px] text-red-600 mt-3">{error}</div>}
+          {info && <div className="text-[13px] text-sage-dark mt-3">{info}</div>}
+
+          <PrimaryButton full className="mt-5" onClick={submitCode} disabled={loading}>{loading ? "Проверяем…" : "Подтвердить"}</PrimaryButton>
+          <button onClick={resend} className="w-full text-center text-[13.5px] text-accent-dark mt-4">Отправить код ещё раз</button>
+        </div>
+      </Section>
+    );
+  }
 
   return (
     <Section className="pt-10 pb-20">
@@ -1403,7 +1465,7 @@ function AuthPage({ go, redirectTo }) {
         {error && <div className="text-[13px] text-red-600 mt-3">{error}</div>}
 
         <PrimaryButton full className="mt-5" onClick={submit} disabled={loading}>{loading ? "Подождите…" : mode === "login" ? "Войти" : "Зарегистрироваться"}</PrimaryButton>
-        {mode === "register" && <p className="text-[11.5px] text-stone text-center mt-3">После регистрации проверьте почту — Supabase может отправить письмо для подтверждения адреса.</p>}
+        {mode === "register" && <p className="text-[11.5px] text-stone text-center mt-3">После регистрации пришлём код подтверждения на почту.</p>}
 
         <button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }} className="w-full text-center text-[13.5px] text-accent-dark mt-4">
           {mode === "login" ? "Нет аккаунта? Зарегистрироваться" : "Уже есть аккаунт? Войти"}
@@ -1922,7 +1984,9 @@ function AdminProducts() {
     setForm((f) => ({ ...f, images: files.map((file) => URL.createObjectURL(file)) }));
   };
 
-  const save = () => {
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
     if (!form.name || !form.price) return;
     const payload = {
       name: form.name, category: form.category, price: Number(form.price) || 0,
@@ -1934,9 +1998,14 @@ function AdminProducts() {
       colors: form.colors ? form.colors.split(",").map((c) => c.trim()).filter(Boolean) : [],
       craftTime: form.craftTime,
     };
-    if (editing === "new") addProduct(payload);
-    else updateProduct(editing, payload);
-    setEditing(null);
+    setSaving(true);
+    try {
+      if (editing === "new") await addProduct(payload);
+      else await updateProduct(editing, payload);
+      setEditing(null);
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (editing) {
@@ -1982,7 +2051,7 @@ function AdminProducts() {
             <label className="flex items-center gap-2 text-[13.5px]"><input type="checkbox" checked={form.isNew} onChange={(e) => setForm((f) => ({ ...f, isNew: e.target.checked }))} className="accent-accent w-4 h-4" /> Новинка</label>
           </div>
           <div className="flex gap-3 mt-2">
-            <PrimaryButton onClick={save}>Сохранить</PrimaryButton>
+            <PrimaryButton onClick={save} disabled={saving}>{saving ? "Сохраняем…" : "Сохранить"}</PrimaryButton>
             <SecondaryButton onClick={() => setEditing(null)}>Отмена</SecondaryButton>
           </div>
         </div>
