@@ -15,3 +15,22 @@ body { background: #FAF7F2; }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* ===== Тёмная тема ===== */
+.dark body { background: #17181A; }
+.dark .bg-cream { background-color: #17181A; }
+.dark .bg-cream\/92 { background-color: rgba(23,24,26,0.92); }
+.dark .bg-cream\/95 { background-color: rgba(23,24,26,0.95); }
+.dark .text-ink { color: #EDEAE3; }
+.dark .bg-white { background-color: #232426; }
+.dark .bg-white\/90 { background-color: rgba(35,36,38,0.9); }
+.dark .bg-white\/95 { background-color: rgba(35,36,38,0.95); }
+.dark .border-line { border-color: #35373a; }
+.dark .border-line\/70 { border-color: rgba(53,55,58,0.7); }
+.dark .bg-line\/40 { background-color: rgba(53,55,58,0.4); }
+.dark .bg-line\/60 { background-color: rgba(53,55,58,0.6); }
+.dark .text-stone { color: #9c968a; }
+.dark .bg-ink { background-color: #0f1011; }
+.dark .bg-ink\/40 { background-color: rgba(15,16,17,0.5); }
+.dark input, .dark textarea, .dark select { background-color: #232426; border-color: #35373a; color: #EDEAE3; }
+.dark ::placeholder { color: #6b6a66; }
