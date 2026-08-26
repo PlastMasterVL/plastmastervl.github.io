@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, createContext, useContext, useRef } from "react";
-import { Search, ShoppingCart, User, Heart, Menu, X, Plus, Minus, Trash2, Star, ChevronLeft, ChevronRight, Send, Phone, MapPin, Clock, Package, CheckCircle2, Circle, ArrowRight, Camera, Sparkles, Home as HomeIcon, Grid3x3, Settings, Newspaper, Tag, LayoutDashboard, Users, MessageSquare, Edit2, Trash, Image as ImageIcon, Video, Upload, LogOut, ChevronDown, Filter, SlidersHorizontal, Instagram, Send as TelegramIcon } from "lucide-react";
+import { Search, ShoppingCart, User, Heart, Menu, X, Plus, Minus, Trash2, Star, ChevronLeft, ChevronRight, Send, Phone, MapPin, Clock, Package, CheckCircle2, Circle, ArrowRight, Camera, Sparkles, Home as HomeIcon, Grid3x3, Settings, Newspaper, Tag, LayoutDashboard, Users, MessageSquare, Edit2, Trash, Image as ImageIcon, Video, Upload, LogOut, ChevronDown, Filter, SlidersHorizontal, Instagram, Send as TelegramIcon, Sun, Moon } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
 /* =========================================================
@@ -26,7 +26,7 @@ const STATUS_LABELS = {
   cancelled: { label: "Отменён", emoji: "❌", color: "#B5504B" },
 };
 
-const ADMIN_EMAILS = ["mamaevv35@gmail.com"]; // почта владельца мастерской PlastYKT
+const ADMIN_EMAILS = ["mamaevv35@gmail.com"]; // почта владельца мастерской PlastMaster
 
 /* =========================================================
    УТИЛИТЫ
@@ -108,6 +108,26 @@ function mapReviewFromDb(row) {
 
 const ShopContext = createContext(null);
 const useShop = () => useContext(ShopContext);
+
+const ThemeContext = createContext(null);
+const useTheme = () => useContext(ThemeContext);
+
+function ThemeProvider({ children }) {
+  const [dark, setDark] = useState(() => {
+    try {
+      const saved = localStorage.getItem("sloy_theme");
+      if (saved) return saved === "dark";
+      return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    } catch (e) { return false; }
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", dark);
+    try { localStorage.setItem("sloy_theme", dark ? "dark" : "light"); } catch (e) { /* ignore */ }
+  }, [dark]);
+
+  return <ThemeContext.Provider value={{ dark, toggleTheme: () => setDark((d) => !d) }}>{children}</ThemeContext.Provider>;
+}
 
 function ShopProvider({ children }) {
   const [ready, setReady] = useState(false);
@@ -429,14 +449,18 @@ function Logo({ size = 38 }) {
   return (
     <div className="flex items-center gap-2.5 select-none">
       <svg width={size} height={size} viewBox="0 0 48 48" fill="none">
-        <rect x="4" y="4" width="40" height="40" rx="12" fill="#2B2A28" />
-        <path d="M12 30 L24 36 L36 30 L36 20 L24 14 L12 20 Z" stroke="#F2A26B" strokeWidth="1.6" fill="none" />
-        <path d="M12 20 L24 26 L36 20" stroke="#F2A26B" strokeWidth="1.6" fill="none" />
-        <path d="M24 26 L24 36" stroke="#F2A26B" strokeWidth="1.6" fill="none" />
-        <path d="M12 25 L24 31 L36 25" stroke="#F2A26B" strokeWidth="1" fill="none" opacity="0.5" />
+        <defs>
+          <linearGradient id="logoGrad" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stopColor="#C77B4A" />
+            <stop offset="1" stopColor="#8B4A2A" />
+          </linearGradient>
+        </defs>
+        <rect x="3" y="3" width="42" height="42" rx="14" fill="url(#logoGrad)" />
+        <text x="24" y="32" textAnchor="middle" fontFamily="Fraunces, Georgia, serif" fontWeight="600" fontSize="24" fill="#FAF7F2">P</text>
+        <circle cx="35" cy="35" r="3.2" fill="#FAF7F2" opacity="0.9" />
       </svg>
       <div className="leading-none">
-        <div className="font-display text-[19px] tracking-tight text-ink">PlastYKT</div>
+        <div className="font-display text-[19px] tracking-tight text-ink">PlastMaster</div>
         <div className="text-[9.5px] tracking-[0.18em] uppercase text-stone">мастерская 3D</div>
       </div>
     </div>
@@ -593,7 +617,7 @@ function ProductCard({ product, onOpen }) {
             onClick={() => product.inStock && addToCart(product.id, product.colors?.[0] || null, 1)}
             disabled={!product.inStock}
             aria-label="В корзину"
-            className="w-[42px] h-[42px] shrink-0 rounded-full bg-ink text-cream flex items-center justify-center active:scale-90 transition-all disabled:opacity-30"
+            className="w-[42px] h-[42px] shrink-0 rounded-full bg-cart hover:bg-cart-dark text-white flex items-center justify-center active:scale-90 transition-all disabled:opacity-30"
           >
             <ShoppingCart size={16} />
           </button>
@@ -619,6 +643,7 @@ const NAV_ITEMS = [
 
 function Header({ page, go, search, setSearch }) {
   const { cart, currentUser, isAdmin } = useShop();
+  const { dark, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
@@ -645,6 +670,9 @@ function Header({ page, go, search, setSearch }) {
             ))}
           </nav>
           <div className="flex items-center gap-0.5">
+            <IconButton label={dark ? "Светлая тема" : "Тёмная тема"} onClick={toggleTheme}>
+              {dark ? <Sun size={19} className="text-ink" /> : <Moon size={19} className="text-ink" />}
+            </IconButton>
             <IconButton label="Поиск" onClick={() => setSearchOpen(true)}><Search size={19} className="text-ink" /></IconButton>
             <div className="hidden md:block"><IconButton label="Избранное" onClick={() => go("favorites")}><Heart size={19} className="text-ink" /></IconButton></div>
             <IconButton label="Корзина" badge={cartCount} onClick={() => go("cart")}><ShoppingCart size={19} className="text-ink" /></IconButton>
@@ -694,6 +722,7 @@ function Header({ page, go, search, setSearch }) {
               <button onClick={() => { go("favorites"); setMenuOpen(false); }} className="text-left px-3 py-3 rounded-xl text-[15px] flex items-center gap-2"><Heart size={17} /> Избранное</button>
               <button onClick={() => { go("cart"); setMenuOpen(false); }} className="text-left px-3 py-3 rounded-xl text-[15px] flex items-center gap-2"><ShoppingCart size={17} /> Корзина</button>
               <button onClick={() => { go(isAdmin ? "admin" : currentUser ? "account" : "auth"); setMenuOpen(false); }} className="text-left px-3 py-3 rounded-xl text-[15px] flex items-center gap-2"><User size={17} /> {currentUser || isAdmin ? "Личный кабинет" : "Войти"}</button>
+              <button onClick={toggleTheme} className="text-left px-3 py-3 rounded-xl text-[15px] flex items-center gap-2">{dark ? <Sun size={17} /> : <Moon size={17} />} {dark ? "Светлая тема" : "Тёмная тема"}</button>
             </nav>
           </div>
         </div>
@@ -703,7 +732,7 @@ function Header({ page, go, search, setSearch }) {
 }
 
 function BottomNav({ page, go }) {
-  const { cart, favorites } = useShop();
+  const { cart, favorites, currentUser, isAdmin } = useShop();
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
   const items = [
     { id: "home", label: "Главная", icon: HomeIcon },
@@ -717,8 +746,9 @@ function BottomNav({ page, go }) {
       {items.map((it) => {
         const Icon = it.icon;
         const activePage = it.id === "account" && (page === "auth" || page === "admin") ? true : page === it.id;
+        const target = it.id === "account" ? (isAdmin ? "admin" : currentUser ? "account" : "auth") : it.id;
         return (
-          <button key={it.id} onClick={() => go(it.id)} className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 relative">
+          <button key={it.id} onClick={() => go(target)} className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 relative">
             <div className="relative">
               <Icon size={21} strokeWidth={activePage ? 2.3 : 1.8} className={activePage ? "text-accent-dark" : "text-stone"} />
               {it.badge > 0 && <span className="absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-0.5 rounded-full bg-accent text-white text-[9px] font-bold flex items-center justify-center">{it.badge > 9 ? "9+" : it.badge}</span>}
@@ -761,7 +791,7 @@ function Footer({ go }) {
         </div>
         <div className="h-px bg-cream/10 my-8" />
         <div className="text-[12.5px] text-cream/40 flex flex-col md:flex-row justify-between gap-2">
-          <span>© 2026 Мастерская «PlastYKT».</span>
+          <span>© 2026 Мастерская «PlastMaster».</span>
           <span>Сделано с любовью к 3D-печати</span>
         </div>
       </Section>
@@ -795,7 +825,7 @@ function HomePage({ go, openProduct }) {
           <img src={PLACEHOLDER_IMG("Изделия мастерской", 1200, 700, "2B2A28", "F2A26B")} alt="Изделия мастерской" className="absolute inset-0 w-full h-full object-cover opacity-45" />
           <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/40 to-transparent" />
           <div className="relative p-7 md:p-12 max-w-xl">
-            <div className="text-[11px] tracking-[0.2em] uppercase text-accent mb-3">Мастерская «PlastYKT»</div>
+            <div className="text-[11px] tracking-[0.2em] uppercase text-accent mb-3">Мастерская «PlastMaster»</div>
             <h1 className="font-display text-[34px] md:text-[48px] leading-[1.08] text-cream mb-3">Изделия, созданные с душой</h1>
             <p className="text-[15px] md:text-[16.5px] text-cream/75 mb-7 max-w-md">3D-печать, полезные вещи, подарки и необычные изделия от небольшой мастерской.</p>
             <div className="flex flex-wrap gap-3">
@@ -1105,7 +1135,7 @@ function ProductPage({ product, go, back }) {
           </div>
 
           {product.inStock ? (
-            <PrimaryButton full onClick={() => addToCart(product.id, color, qty)}><ShoppingCart size={17} /> Добавить в корзину</PrimaryButton>
+            <PrimaryButton full className="!bg-cart hover:!bg-cart-dark" onClick={() => addToCart(product.id, color, qty)}><ShoppingCart size={17} /> Добавить в корзину</PrimaryButton>
           ) : (
             <SecondaryButton full onClick={() => go("custom")}>Заказать похожее изделие</SecondaryButton>
           )}
@@ -1293,7 +1323,7 @@ function CheckoutPage({ go }) {
 
   if (orderResult) {
     const waMessage = encodeURIComponent(
-      `Здравствуйте! Оформил(а) заказ №${orderResult.number} на сайте PlastYKT.\n` +
+      `Здравствуйте! Оформил(а) заказ №${orderResult.number} на сайте PlastMaster.\n` +
       `Состав заказа:\n${orderResult.items.map((i) => `— ${i.name}${i.color ? ` (${i.color})` : ""} × ${i.qty}`).join("\n")}\n` +
       `Сумма: ${formatPrice(orderResult.total)}\n` +
       `Хочу уточнить оплату и доставку.`
@@ -1805,7 +1835,7 @@ function ContactsBlock({ compact }) {
   return (
     <div className={`rounded-[24px] bg-ink text-cream p-7 md:p-10 grid md:grid-cols-2 gap-6 ${compact ? "" : ""}`}>
       <div>
-        <div className="text-[11px] tracking-[0.18em] uppercase text-accent mb-2">Мастерская «PlastYKT»</div>
+        <div className="text-[11px] tracking-[0.18em] uppercase text-accent mb-2">Мастерская «PlastMaster»</div>
         <h3 className="font-display text-[24px] mb-4">📞 Контакты</h3>
         <div className="flex flex-col gap-3 text-[14.5px] text-cream/85">
           <span className="flex items-center gap-2.5"><Phone size={16} /> +7 968 152-36-79</span>
@@ -2280,8 +2310,10 @@ function AppShell() {
 
 export default function App() {
   return (
-    <ShopProvider>
-      <AppShell />
-    </ShopProvider>
+    <ThemeProvider>
+      <ShopProvider>
+        <AppShell />
+      </ShopProvider>
+    </ThemeProvider>
   );
 }
