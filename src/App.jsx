@@ -1997,7 +1997,7 @@ function emptyProductForm() {
 }
 
 function AdminProducts() {
-  const { products, addProduct, updateProduct, deleteProduct } = useShop();
+  const { products, addProduct, updateProduct, deleteProduct, showToast } = useShop();
   const [editing, setEditing] = useState(null); // null | "new" | product.id
   const [form, setForm] = useState(emptyProductForm());
   const fileRef = useRef(null);
@@ -2008,10 +2008,31 @@ function AdminProducts() {
   };
   const startNew = () => { setForm(emptyProductForm()); setEditing("new"); };
 
-  const handleFiles = (e) => {
-    const files = Array.from(e.target.files || []).slice(0, 6);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-    setForm((f) => ({ ...f, images: files.map((file) => URL.createObjectURL(file)) }));
+    setUploading(true);
+    try {
+      const uploadedUrls = [];
+      for (const file of files) {
+        const ext = file.name.split(".").pop();
+        const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error } = await supabase.storage.from("product-images").upload(path, file);
+        if (error) { showToast(`Не удалось загрузить ${file.name}: ${error.message}`); continue; }
+        const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+        uploadedUrls.push(data.publicUrl);
+      }
+      setForm((f) => ({ ...f, images: [...f.images, ...uploadedUrls].slice(0, 6) }));
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const removeImage = (idx) => {
+    setForm((f) => ({ ...f, images: f.images.filter((_, i) => i !== idx) }));
   };
 
   const [saving, setSaving] = useState(false);
@@ -2068,12 +2089,23 @@ function AdminProducts() {
             <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={3} className="w-full p-3 rounded-xl border border-line outline-none text-[14px] resize-none focus:border-accent bg-white" />
           </div>
           <div>
-            <label className="text-[13px] text-stone mb-1.5 block">Фотографии</label>
+            <label className="text-[13px] text-stone mb-1.5 block">Фотографии (до 6 шт.)</label>
             <input ref={fileRef} type="file" accept="image/*" multiple onChange={handleFiles} className="hidden" />
-            <button onClick={() => fileRef.current?.click()} className="flex items-center gap-2 px-4 py-3 rounded-xl border border-dashed border-line text-[13.5px] text-stone hover:border-accent">
-              <Upload size={16} /> Загрузить фото
+            <button onClick={() => fileRef.current?.click()} disabled={uploading} className="flex items-center gap-2 px-4 py-3 rounded-xl border border-dashed border-line text-[13.5px] text-stone hover:border-accent disabled:opacity-50">
+              <Upload size={16} /> {uploading ? "Загружаем…" : "Загрузить фото"}
             </button>
-            {form.images.length > 0 && <div className="flex gap-2 mt-2">{form.images.map((img, i) => <img key={i} src={img} className="w-14 h-14 rounded-lg object-cover" alt="" />)}</div>}
+            {form.images.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {form.images.map((img, i) => (
+                  <div key={i} className="relative">
+                    <img src={img} className="w-16 h-16 rounded-lg object-cover" alt="" />
+                    <button onClick={() => removeImage(i)} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-ink text-cream flex items-center justify-center">
+                      <X size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <Field label="Ссылка на видео (необязательно)" value={form.video} onChange={(e) => setForm((f) => ({ ...f, video: e.target.value }))} />
           <div className="flex items-center gap-5">
