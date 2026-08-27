@@ -5,7 +5,7 @@
 * { -webkit-tap-highlight-color: transparent; }
 html { scroll-behavior: smooth; }
 body { background: #FAF7F2; }
-.font-display { font-family: 'Fraunces', Georgia, serif; font-weight: 500; }
+.font-display { font-family: 'Inter', -apple-system, sans-serif; font-weight: 700; letter-spacing: -0.01em; }
 .font-body { font-family: 'Inter', sans-serif; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -34,3 +34,21 @@ body { background: #FAF7F2; }
 .dark .bg-ink\/40 { background-color: rgba(15,16,17,0.5); }
 .dark input, .dark textarea, .dark select { background-color: #232426; border-color: #35373a; color: #EDEAE3; }
 .dark ::placeholder { color: #6b6a66; }
+
+/* В тёмной теме тёмные кнопки/чипы становятся светлыми, чтобы не сливаться с фоном */
+.dark .bg-ink.text-cream:not(.dark-surface) {
+  background-color: #EDEAE3;
+  color: #17181A;
+}
+
+/* Плавные переходы между темами и общие мягкие анимации интерфейса */
+body, header, footer, nav, button, input, textarea, select,
+.bg-cream, .bg-white, .bg-ink, .text-ink, .text-cream, .border-line {
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+main > section, main > div { animation: fade-in-up 0.35s ease-out; }

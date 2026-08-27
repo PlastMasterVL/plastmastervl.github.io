@@ -505,7 +505,7 @@ function PrimaryButton({ children, onClick, className = "", type = "button", dis
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`${full ? "w-full" : ""} inline-flex items-center justify-center gap-2 rounded-full bg-ink text-cream px-5 py-3 text-[14.5px] font-medium tracking-wide transition-all active:scale-[0.97] hover:bg-accent-dark disabled:opacity-40 disabled:pointer-events-none ${className}`}
+      className={`${full ? "w-full" : ""} inline-flex items-center justify-center gap-2 rounded-lg bg-ink text-cream px-5 py-3 text-[14.5px] font-semibold tracking-wide transition-all active:scale-[0.97] hover:bg-accent-dark disabled:opacity-40 disabled:pointer-events-none ${className}`}
     >
       {children}
     </button>
@@ -517,7 +517,7 @@ function SecondaryButton({ children, onClick, className = "", full, active }) {
     <button
       type="button"
       onClick={onClick}
-      className={`${full ? "w-full" : ""} inline-flex items-center justify-center gap-2 rounded-full border transition-all active:scale-[0.97] px-5 py-3 text-[14.5px] font-medium ${
+      className={`${full ? "w-full" : ""} inline-flex items-center justify-center gap-2 rounded-lg border transition-all active:scale-[0.97] px-5 py-3 text-[14.5px] font-medium ${
         active ? "bg-ink text-cream border-ink" : "border-line text-ink hover:border-accent hover:text-accent-dark"
       } ${className}`}
     >
@@ -581,47 +581,45 @@ function EmptyState({ icon, title, subtitle, action }) {
 
 /* Товарная карточка */
 function ProductCard({ product, onOpen }) {
-  const { favorites, toggleFavorite, addToCart, currentUser } = useShop();
+  const { favorites, toggleFavorite, addToCart } = useShop();
   const isFav = favorites.includes(product.id);
   const price = salePrice(product);
   return (
-    <div className="group flex flex-col rounded-[22px] bg-white border border-line/70 overflow-hidden transition-all hover:shadow-[0_10px_30px_-12px_rgba(43,42,40,0.18)] hover:-translate-y-0.5">
+    <div className="group flex flex-col rounded-xl bg-white border border-line overflow-hidden transition-all hover:shadow-md">
       <div className="relative aspect-square overflow-hidden bg-line/40 cursor-pointer" onClick={() => onOpen(product)}>
-        <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
-        <div className="absolute top-2.5 left-2.5 flex flex-col gap-1.5">
-          {product.isNew && <Badge tone="sage">Новинка</Badge>}
-          {product.sale && <Badge tone="accent">−{product.sale}%</Badge>}
-          {!product.inStock && <Badge tone="stone">Нет в наличии</Badge>}
+        <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" loading="lazy" />
+        <div className="absolute top-2 left-2 flex flex-col gap-1">
+          {product.sale && <span className="bg-accent text-white text-[11px] font-bold px-1.5 py-0.5 rounded">-{product.sale}%</span>}
+          {product.isNew && !product.sale && <span className="bg-sage text-white text-[10.5px] font-medium px-1.5 py-0.5 rounded">Новинка</span>}
+          {!product.inStock && <span className="bg-stone text-white text-[10.5px] font-medium px-1.5 py-0.5 rounded">Нет в наличии</span>}
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); toggleFavorite(product.id); }}
           aria-label="В избранное"
-          className="absolute top-2.5 right-2.5 w-9 h-9 rounded-full bg-white/90 backdrop-blur flex items-center justify-center active:scale-90 transition-transform"
+          className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/95 backdrop-blur flex items-center justify-center active:scale-90 transition-transform"
         >
-          <Heart size={16} strokeWidth={2} fill={isFav ? "#C77B4A" : "none"} stroke={isFav ? "#C77B4A" : "#2B2A28"} />
+          <Heart size={15} strokeWidth={2} fill={isFav ? "#CB11AB" : "none"} stroke={isFav ? "#CB11AB" : "#1A1A1A"} />
         </button>
       </div>
-      <div className="p-3.5 flex flex-col gap-1.5 flex-1">
-        <div className="text-[14px] text-ink leading-snug line-clamp-2 cursor-pointer" onClick={() => onOpen(product)}>{product.name}</div>
-        <div className="flex items-center gap-1.5">
-          <Stars value={product.rating} size={12} />
-          <span className="text-[11.5px] text-stone">({product.reviewsCount})</span>
+      <div className="p-2.5 flex flex-col gap-1 flex-1">
+        <div className="flex items-center gap-1">
+          <span className="flex items-center gap-0.5 bg-sage/12 text-sage-dark text-[11px] font-semibold px-1.5 py-0.5 rounded">
+            <Star size={10} strokeWidth={0} fill="currentColor" /> {product.rating.toFixed(1)}
+          </span>
+          <span className="text-[11px] text-stone">{product.reviewsCount} отзывов</span>
         </div>
-        <div className="flex items-center gap-2 mt-auto pt-1">
-          <span className="font-display text-[18px] text-ink">{formatPrice(price)}</span>
-          {product.sale && <span className="text-[13px] text-stone line-through">{formatPrice(product.price)}</span>}
+        <div className="text-[13px] text-ink leading-snug line-clamp-2 cursor-pointer min-h-[34px]" onClick={() => onOpen(product)}>{product.name}</div>
+        <div className="flex items-baseline gap-1.5 mt-auto pt-1">
+          <span className="font-display text-[17px] text-ink">{formatPrice(price)}</span>
+          {product.sale && <span className="text-[12px] text-stone line-through">{formatPrice(product.price)}</span>}
         </div>
-        <div className="flex gap-2 mt-1.5">
-          <SecondaryButton className="!py-2 !px-3 !text-[13px] flex-1" onClick={() => onOpen(product)}>Подробнее</SecondaryButton>
-          <button
-            onClick={() => product.inStock && addToCart(product.id, product.colors?.[0] || null, 1)}
-            disabled={!product.inStock}
-            aria-label="В корзину"
-            className="w-[42px] h-[42px] shrink-0 rounded-full bg-cart hover:bg-cart-dark text-white flex items-center justify-center active:scale-90 transition-all disabled:opacity-30"
-          >
-            <ShoppingCart size={16} />
-          </button>
-        </div>
+        <button
+          onClick={() => product.inStock && addToCart(product.id, product.colors?.[0] || null, 1)}
+          disabled={!product.inStock}
+          className="mt-1.5 w-full py-2 rounded-lg bg-cart hover:bg-cart-dark text-white text-[13px] font-medium flex items-center justify-center gap-1.5 active:scale-[0.97] transition-all disabled:opacity-30"
+        >
+          <ShoppingCart size={14} /> В корзину
+        </button>
       </div>
     </div>
   );
@@ -803,6 +801,68 @@ function Footer({ go }) {
    ГЛАВНАЯ СТРАНИЦА
    ========================================================= */
 
+/* =========================================================
+   БАННЕР-КАРУСЕЛЬ ГЛАВНОЙ (стиль маркетплейса)
+   ========================================================= */
+
+const HERO_SLIDES = [
+  {
+    title: "Изделия, созданные с душой",
+    text: "3D-печать, полезные вещи, подарки и необычные изделия от небольшой мастерской.",
+    cta: "Перейти в каталог",
+    ctaPage: "catalog",
+    bg: "1A1A1A", fg: "CB11AB",
+  },
+  {
+    title: "Скидки до 15% на подарочные наборы",
+    text: "Успейте собрать подарок близким по акции этого месяца.",
+    cta: "Смотреть акции",
+    ctaPage: "promos",
+    bg: "CB11AB", fg: "FFFFFF",
+  },
+  {
+    title: "Закажите своё уникальное изделие",
+    text: "Пришлите идею — мы напечатаем её на 3D-принтере специально для вас.",
+    cta: "Оставить заявку",
+    ctaPage: "custom",
+    bg: "00A046", fg: "FFFFFF",
+  },
+];
+
+function HeroCarousel({ go }) {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setIndex((i) => (i + 1) % HERO_SLIDES.length), 5000);
+    return () => clearInterval(t);
+  }, []);
+
+  const slide = HERO_SLIDES[index];
+
+  return (
+    <div className="relative rounded-2xl overflow-hidden bg-ink min-h-[220px] md:min-h-[340px] flex items-end">
+      <img src={PLACEHOLDER_IMG(slide.title, 1200, 500, slide.bg, slide.fg)} alt={slide.title} className="absolute inset-0 w-full h-full object-cover" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+      <div className="relative p-5 md:p-10 max-w-lg">
+        <h1 className="font-display text-[22px] md:text-[32px] leading-[1.15] text-white mb-2">{slide.title}</h1>
+        <p className="text-[13px] md:text-[15px] text-white/80 mb-4 max-w-md hidden sm:block">{slide.text}</p>
+        <PrimaryButton onClick={() => go(slide.ctaPage)} className="!bg-white !text-ink hover:!bg-white/90">{slide.cta} <ArrowRight size={16} /></PrimaryButton>
+      </div>
+      <button onClick={() => setIndex((i) => (i - 1 + HERO_SLIDES.length) % HERO_SLIDES.length)} aria-label="Предыдущий баннер" className="hidden md:flex absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 items-center justify-center">
+        <ChevronLeft size={18} />
+      </button>
+      <button onClick={() => setIndex((i) => (i + 1) % HERO_SLIDES.length)} aria-label="Следующий баннер" className="hidden md:flex absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 items-center justify-center">
+        <ChevronRight size={18} />
+      </button>
+      <div className="absolute bottom-3 right-4 flex gap-1.5">
+        {HERO_SLIDES.map((_, i) => (
+          <button key={i} onClick={() => setIndex(i)} aria-label={`Баннер ${i + 1}`} className={`h-1.5 rounded-full transition-all ${i === index ? "w-5 bg-white" : "w-1.5 bg-white/50"}`} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function HomePage({ go, openProduct }) {
   const { products, reviews, news, promos } = useShop();
   const popular = [...products].sort((a, b) => b.rating * b.reviewsCount - a.rating * a.reviewsCount).slice(0, 4);
@@ -819,41 +879,28 @@ function HomePage({ go, openProduct }) {
 
   return (
     <>
-      {/* Hero */}
-      <Section className="pt-8 md:pt-14 pb-14 md:pb-20">
-        <div className="relative rounded-[28px] overflow-hidden bg-ink min-h-[440px] md:min-h-[520px] flex items-end">
-          <img src={PLACEHOLDER_IMG("Изделия мастерской", 1200, 700, "2B2A28", "F2A26B")} alt="Изделия мастерской" className="absolute inset-0 w-full h-full object-cover opacity-45" />
-          <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/40 to-transparent" />
-          <div className="relative p-7 md:p-12 max-w-xl">
-            <div className="text-[11px] tracking-[0.2em] uppercase text-accent mb-3">Мастерская «PlastMaster»</div>
-            <h1 className="font-display text-[34px] md:text-[48px] leading-[1.08] text-cream mb-3">Изделия, созданные с душой</h1>
-            <p className="text-[15px] md:text-[16.5px] text-cream/75 mb-7 max-w-md">3D-печать, полезные вещи, подарки и необычные изделия от небольшой мастерской.</p>
-            <div className="flex flex-wrap gap-3">
-              <PrimaryButton onClick={() => go("catalog")} className="!bg-accent hover:!bg-accent-dark">Перейти в каталог <ArrowRight size={16} /></PrimaryButton>
-              <SecondaryButton onClick={() => go("custom")} className="!border-cream/30 !text-cream hover:!border-cream">Заказать своё изделие</SecondaryButton>
-            </div>
-          </div>
+      {/* Баннер-карусель */}
+      <Section className="pt-4 md:pt-6 pb-6">
+        <HeroCarousel go={go} />
+      </Section>
+
+      {/* Категории — плитка как в приложении маркетплейса */}
+      <Section className="pb-8">
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+          {CATEGORIES.map((c) => (
+            <button key={c.id} onClick={() => go("catalog", { category: c.id })} className="flex flex-col items-center gap-2 group">
+              <span className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white border border-line flex items-center justify-center text-2xl md:text-3xl group-hover:border-accent group-active:scale-95 transition-all">{c.emoji}</span>
+              <span className="text-[11.5px] md:text-[12.5px] text-ink text-center leading-tight">{c.name}</span>
+            </button>
+          ))}
         </div>
       </Section>
 
       {/* Популярные товары */}
       <Section className="pb-16">
         <SectionHeader eyebrow="Выбор покупателей" title="Популярные товары" action={<button onClick={() => go("catalog")} className="hidden md:flex items-center gap-1 text-[14px] text-accent-dark font-medium">Весь каталог <ArrowRight size={14} /></button>} />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 md:gap-5">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-4">
           {popular.map((p) => <ProductCard key={p.id} product={p} onOpen={openProduct} />)}
-        </div>
-      </Section>
-
-      {/* Категории */}
-      <Section className="pb-16">
-        <SectionHeader eyebrow="Что мы делаем" title="Категории" />
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-          {CATEGORIES.map((c) => (
-            <button key={c.id} onClick={() => go("catalog", { category: c.id })} className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-white border border-line/70 hover:border-accent hover:-translate-y-0.5 transition-all">
-              <span className="text-2xl">{c.emoji}</span>
-              <span className="text-[12.5px] text-ink text-center leading-tight">{c.name}</span>
-            </button>
-          ))}
         </div>
       </Section>
 
@@ -861,7 +908,7 @@ function HomePage({ go, openProduct }) {
       {newest.length > 0 && (
         <Section className="pb-16">
           <SectionHeader eyebrow="Только что напечатали" title="✨ Новинки" action={<button onClick={() => go("catalog", { filter: "new" })} className="hidden md:flex items-center gap-1 text-[14px] text-accent-dark font-medium">Все новинки <ArrowRight size={14} /></button>} />
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 md:gap-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-4">
             {newest.map((p) => <ProductCard key={p.id} product={p} onOpen={openProduct} />)}
           </div>
         </Section>
@@ -1042,7 +1089,7 @@ function CatalogPage({ openProduct, initialFilter, search, setSearch }) {
       {filtered.length === 0 ? (
         <EmptyState icon={Search} title="Ничего не нашлось" subtitle="Попробуйте другой запрос или посмотрите весь каталог." />
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 md:gap-5">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-4">
           {filtered.map((p) => <ProductCard key={p.id} product={p} onOpen={openProduct} />)}
         </div>
       )}
@@ -1215,7 +1262,7 @@ function FavoritesPage({ openProduct, go }) {
       {list.length === 0 ? (
         <EmptyState icon={Heart} title="Пока пусто" subtitle="Сохраняйте понравившиеся товары, нажимая на сердечко." action={<PrimaryButton className="mt-5" onClick={() => go("catalog")}>Перейти в каталог</PrimaryButton>} />
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 md:gap-5">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-4">
           {list.map((p) => <ProductCard key={p.id} product={p} onOpen={openProduct} />)}
         </div>
       )}
@@ -1577,7 +1624,7 @@ function AccountPage({ go, initialTab }) {
         myFavorites.length === 0 ? (
           <EmptyState icon={Heart} title="Пока пусто" subtitle="Сохраняйте товары из каталога." action={<PrimaryButton className="mt-5" onClick={() => go("catalog")}>В каталог</PrimaryButton>} />
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 md:gap-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-4">
             {myFavorites.map((p) => <ProductCard key={p.id} product={p} onOpen={(prod) => go("product", { product: prod })} />)}
           </div>
         )
@@ -1757,7 +1804,7 @@ function PromosPage({ openProduct }) {
                     <p className="text-[12.5px] text-stone mt-2">Действует до {formatDate(promo.endDate)}</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 md:gap-5">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-4">
                   {promoProducts.map((p) => <ProductCard key={p.id} product={p} onOpen={openProduct} />)}
                 </div>
               </div>
@@ -1833,7 +1880,7 @@ function ReviewsPage() {
 
 function ContactsBlock({ compact }) {
   return (
-    <div className={`rounded-[24px] bg-ink text-cream p-7 md:p-10 grid md:grid-cols-2 gap-6 ${compact ? "" : ""}`}>
+    <div className={`dark-surface rounded-[24px] bg-ink text-cream p-7 md:p-10 grid md:grid-cols-2 gap-6 ${compact ? "" : ""}`}>
       <div>
         <div className="text-[11px] tracking-[0.18em] uppercase text-accent mb-2">Мастерская «PlastMaster»</div>
         <h3 className="font-display text-[24px] mb-4">📞 Контакты</h3>
