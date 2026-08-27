@@ -5,13 +5,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        cream: "#FAF7F2",
-        ink: "#2B2A28",
-        accent: { DEFAULT: "#C77B4A", dark: "#A9603A" },
-        sage: { DEFAULT: "#8B9A8C", dark: "#5F7361" },
-        stone: { DEFAULT: "#8A8478", dark: "#5C574C" },
-        line: "#E8E1D4",
-        cart: { DEFAULT: "#CB11AB", dark: "#A20E8A" },
+        cream: "#F5F5F7",
+        ink: "#1A1A1A",
+        accent: { DEFAULT: "#CB11AB", dark: "#9E0D87" },
+        sage: { DEFAULT: "#00A046", dark: "#00863A" },
+        stone: { DEFAULT: "#767676", dark: "#4A4A4A" },
+        line: "#E5E5E5",
+        cart: { DEFAULT: "#CB11AB", dark: "#9E0D87" },
       },
     },
   },
