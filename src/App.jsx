@@ -6,15 +6,7 @@ import { supabase } from "./supabaseClient";
    СПРАВОЧНИКИ
    ========================================================= */
 
-const CATEGORIES = [
-  { id: "tableware", name: "Посуда", emoji: "🍶" },
-  { id: "decor", name: "Декор", emoji: "🏺" },
-  { id: "toys", name: "Игрушки", emoji: "🧸" },
-  { id: "keychains", name: "Брелоки", emoji: "🔑" },
-  { id: "home", name: "Для дома", emoji: "🏠" },
-  { id: "gifts", name: "Подарки", emoji: "🎁" },
-];
-
+// Категории теперь хранятся в базе данных (таблица categories) и управляются из админки
 const STATUS_FLOW = ["new", "confirmed", "in_production", "ready", "shipped", "received"];
 const STATUS_LABELS = {
   new: { label: "Ожидает подтверждения", emoji: "🟡", color: "#C77B4A" },
@@ -135,6 +127,9 @@ function ShopProvider({ children }) {
   const [reviews, setReviews] = useState([]);
   const [news, setNews] = useState([]);
   const [promos, setPromos] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [heroSlides, setHeroSlides] = useState([]);
+  const [allHeroSlides, setAllHeroSlides] = useState([]);
   const [orders, setOrders] = useState([]);
   const [users, setUsers] = useState([]); // упрощённый список для админки (только свои профили не покажет — см. ограничение ниже)
   const [session, setSession] = useState(null);
@@ -184,6 +179,21 @@ function ShopProvider({ children }) {
     if (!error && data) setPromos(data.map((p) => ({ id: p.id, title: p.title, description: p.description, discount: p.discount, endDate: p.end_date, productIds: p.product_ids || [], image: p.image })));
   }, []);
 
+  const loadCategories = useCallback(async () => {
+    const { data, error } = await supabase.from("categories").select("*").order("sort_order", { ascending: true });
+    if (!error && data) setCategories(data.map((c) => ({ id: c.slug, name: c.name, emoji: c.emoji, sortOrder: c.sort_order })));
+  }, []);
+
+  const loadHeroSlides = useCallback(async () => {
+    const { data, error } = await supabase.from("hero_slides").select("*").order("sort_order", { ascending: true });
+    if (!error && data) setHeroSlides(data.filter((s) => s.active).map((s) => ({ id: s.id, title: s.title, text: s.text, image: s.image, ctaText: s.cta_text, ctaPage: s.cta_page, sortOrder: s.sort_order })));
+  }, []);
+
+  const loadAllHeroSlidesForAdmin = useCallback(async () => {
+    const { data, error } = await supabase.from("hero_slides").select("*").order("sort_order", { ascending: true });
+    if (!error && data) setAllHeroSlides(data.map((s) => ({ id: s.id, title: s.title, text: s.text, image: s.image, ctaText: s.cta_text, ctaPage: s.cta_page, sortOrder: s.sort_order, active: s.active })));
+  }, []);
+
   // --- Данные, зависящие от авторизации ---
   const loadMyOrders = useCallback(async (userId) => {
     if (!userId) { setOrders([]); return; }
@@ -223,7 +233,7 @@ function ShopProvider({ children }) {
   // --- Инициализация: сессия + публичные данные ---
   useEffect(() => {
     (async () => {
-      await Promise.all([loadProducts(), loadReviews(), loadNews(), loadPromos()]);
+      await Promise.all([loadProducts(), loadReviews(), loadNews(), loadPromos(), loadCategories(), loadHeroSlides()]);
       const { data: { session: s } } = await supabase.auth.getSession();
       setSession(s);
       setReady(true);
@@ -233,7 +243,7 @@ function ShopProvider({ children }) {
       setSession(s);
     });
     return () => listener.subscription.unsubscribe();
-  }, [loadProducts, loadReviews, loadNews, loadPromos]);
+  }, [loadProducts, loadReviews, loadNews, loadPromos, loadCategories, loadHeroSlides]);
 
   // При смене сессии — подгружаем персональные данные
   useEffect(() => {
@@ -245,10 +255,11 @@ function ShopProvider({ children }) {
       loadAllOrdersForAdmin();
       loadAllUsersForAdmin();
       loadCustomRequestsForAdmin();
+      loadAllHeroSlidesForAdmin();
     } else {
       loadMyOrders(userId);
     }
-  }, [session, loadProfile, loadMyNotifications, loadAllOrdersForAdmin, loadAllUsersForAdmin, loadCustomRequestsForAdmin, loadMyOrders]);
+  }, [session, loadProfile, loadMyNotifications, loadAllOrdersForAdmin, loadAllUsersForAdmin, loadCustomRequestsForAdmin, loadMyOrders, loadAllHeroSlidesForAdmin]);
 
   /* --- Авторизация --- */
   const register = useCallback(async (data) => {
@@ -388,6 +399,51 @@ function ShopProvider({ children }) {
     setProducts((ps) => ps.filter((p) => p.id !== id));
   }, []);
 
+  /* --- Категории (админ) --- */
+  const addCategory = useCallback(async (name, emoji) => {
+    const slug = uid("cat");
+    const sortOrder = categories.length ? Math.max(...categories.map((c) => c.sortOrder || 0)) + 1 : 1;
+    const { error } = await supabase.from("categories").insert({ slug, name, emoji, sort_order: sortOrder });
+    if (error) { showToast("Ошибка: " + error.message); return; }
+    setCategories((cs) => [...cs, { id: slug, name, emoji, sortOrder }]);
+  }, [categories, showToast]);
+
+  const updateCategory = useCallback(async (slug, patch) => {
+    const { error } = await supabase.from("categories").update({ name: patch.name, emoji: patch.emoji }).eq("slug", slug);
+    if (error) { showToast("Ошибка: " + error.message); return; }
+    setCategories((cs) => cs.map((c) => (c.id === slug ? { ...c, ...patch } : c)));
+  }, [showToast]);
+
+  const deleteCategory = useCallback(async (slug) => {
+    await supabase.from("categories").delete().eq("slug", slug);
+    setCategories((cs) => cs.filter((c) => c.id !== slug));
+  }, []);
+
+  /* --- Слайды баннера (админ) --- */
+  const addHeroSlide = useCallback(async (slide) => {
+    const sortOrder = allHeroSlides.length ? Math.max(...allHeroSlides.map((s) => s.sortOrder || 0)) + 1 : 1;
+    const payload = { title: slide.title, text: slide.text, image: slide.image, cta_text: slide.ctaText, cta_page: slide.ctaPage, sort_order: sortOrder, active: true };
+    const { data, error } = await supabase.from("hero_slides").insert(payload).select().single();
+    if (error) { showToast("Ошибка: " + error.message); return; }
+    const mapped = { id: data.id, title: data.title, text: data.text, image: data.image, ctaText: data.cta_text, ctaPage: data.cta_page, sortOrder: data.sort_order, active: data.active };
+    setAllHeroSlides((s) => [...s, mapped]);
+    if (mapped.active) setHeroSlides((s) => [...s, mapped]);
+  }, [allHeroSlides, showToast]);
+
+  const updateHeroSlide = useCallback(async (id, patch) => {
+    const payload = { title: patch.title, text: patch.text, image: patch.image, cta_text: patch.ctaText, cta_page: patch.ctaPage, active: patch.active };
+    const { error } = await supabase.from("hero_slides").update(payload).eq("id", id);
+    if (error) { showToast("Ошибка: " + error.message); return; }
+    setAllHeroSlides((s) => s.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    loadHeroSlides();
+  }, [showToast, loadHeroSlides]);
+
+  const deleteHeroSlide = useCallback(async (id) => {
+    await supabase.from("hero_slides").delete().eq("id", id);
+    setAllHeroSlides((s) => s.filter((x) => x.id !== id));
+    setHeroSlides((s) => s.filter((x) => x.id !== id));
+  }, []);
+
   /* --- Отзывы --- */
   const addReview = useCallback(async (productId, rating, text, photo) => {
     if (!session?.user?.id) { showToast("Войдите, чтобы оставить отзыв"); return; }
@@ -430,11 +486,14 @@ function ShopProvider({ children }) {
 
   const value = {
     ready, products, reviews, news, promos, orders, users, cart, favorites, customRequests, notifications,
+    categories, heroSlides, allHeroSlides,
     currentUser, isAdmin, toast, showToast,
     register, login, logout, updateProfile, verifySignupCode, resendSignupCode,
     addToCart, updateCartQty, removeFromCart, clearCart,
     toggleFavorite, createOrder, updateOrderStatus,
     addProduct, updateProduct, deleteProduct,
+    addCategory, updateCategory, deleteCategory,
+    addHeroSlide, updateHeroSlide, deleteHeroSlide,
     addReview, moderateReview, addNews, deleteNews, submitCustomRequest,
   };
 
@@ -802,69 +861,56 @@ function Footer({ go }) {
    ========================================================= */
 
 /* =========================================================
-   БАННЕР-КАРУСЕЛЬ ГЛАВНОЙ (стиль маркетплейса)
+   БАННЕР-КАРУСЕЛЬ ГЛАВНОЙ (стиль маркетплейса, слайды из БД)
    ========================================================= */
 
-const HERO_SLIDES = [
-  {
-    title: "Изделия, созданные с душой",
-    text: "3D-печать, полезные вещи, подарки и необычные изделия от небольшой мастерской.",
-    cta: "Перейти в каталог",
-    ctaPage: "catalog",
-    bg: "1A1A1A", fg: "CB11AB",
-  },
-  {
-    title: "Скидки до 15% на подарочные наборы",
-    text: "Успейте собрать подарок близким по акции этого месяца.",
-    cta: "Смотреть акции",
-    ctaPage: "promos",
-    bg: "CB11AB", fg: "FFFFFF",
-  },
-  {
-    title: "Закажите своё уникальное изделие",
-    text: "Пришлите идею — мы напечатаем её на 3D-принтере специально для вас.",
-    cta: "Оставить заявку",
-    ctaPage: "custom",
-    bg: "00A046", fg: "FFFFFF",
-  },
-];
-
 function HeroCarousel({ go }) {
+  const { heroSlides } = useShop();
   const [index, setIndex] = useState(0);
+  const slides = heroSlides.length > 0 ? heroSlides : [{ id: "placeholder", title: "Добро пожаловать!", text: "Добавьте слайды в разделе «Баннер» админ-панели.", image: PLACEHOLDER_IMG("PlastMaster", 1200, 500, "1A1A1A", "CB11AB"), ctaText: "В каталог", ctaPage: "catalog" }];
 
   useEffect(() => {
-    const t = setInterval(() => setIndex((i) => (i + 1) % HERO_SLIDES.length), 5000);
-    return () => clearInterval(t);
-  }, []);
+    if (index >= slides.length) setIndex(0);
+  }, [slides.length, index]);
 
-  const slide = HERO_SLIDES[index];
+  useEffect(() => {
+    if (slides.length <= 1) return;
+    const t = setInterval(() => setIndex((i) => (i + 1) % slides.length), 5000);
+    return () => clearInterval(t);
+  }, [slides.length]);
+
+  const slide = slides[index] || slides[0];
 
   return (
     <div className="relative rounded-2xl overflow-hidden bg-ink min-h-[220px] md:min-h-[340px] flex items-end">
-      <img src={PLACEHOLDER_IMG(slide.title, 1200, 500, slide.bg, slide.fg)} alt={slide.title} className="absolute inset-0 w-full h-full object-cover" />
+      <img src={slide.image || PLACEHOLDER_IMG(slide.title, 1200, 500, "1A1A1A", "CB11AB")} alt={slide.title} className="absolute inset-0 w-full h-full object-cover" />
       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
       <div className="relative p-5 md:p-10 max-w-lg">
         <h1 className="font-display text-[22px] md:text-[32px] leading-[1.15] text-white mb-2">{slide.title}</h1>
-        <p className="text-[13px] md:text-[15px] text-white/80 mb-4 max-w-md hidden sm:block">{slide.text}</p>
-        <PrimaryButton onClick={() => go(slide.ctaPage)} className="!bg-white !text-ink hover:!bg-white/90">{slide.cta} <ArrowRight size={16} /></PrimaryButton>
+        {slide.text && <p className="text-[13px] md:text-[15px] text-white/80 mb-4 max-w-md hidden sm:block">{slide.text}</p>}
+        <PrimaryButton onClick={() => go(slide.ctaPage || "catalog")} className="!bg-white !text-ink hover:!bg-white/90">{slide.ctaText || "Подробнее"} <ArrowRight size={16} /></PrimaryButton>
       </div>
-      <button onClick={() => setIndex((i) => (i - 1 + HERO_SLIDES.length) % HERO_SLIDES.length)} aria-label="Предыдущий баннер" className="hidden md:flex absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 items-center justify-center">
-        <ChevronLeft size={18} />
-      </button>
-      <button onClick={() => setIndex((i) => (i + 1) % HERO_SLIDES.length)} aria-label="Следующий баннер" className="hidden md:flex absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 items-center justify-center">
-        <ChevronRight size={18} />
-      </button>
-      <div className="absolute bottom-3 right-4 flex gap-1.5">
-        {HERO_SLIDES.map((_, i) => (
-          <button key={i} onClick={() => setIndex(i)} aria-label={`Баннер ${i + 1}`} className={`h-1.5 rounded-full transition-all ${i === index ? "w-5 bg-white" : "w-1.5 bg-white/50"}`} />
-        ))}
-      </div>
+      {slides.length > 1 && (
+        <>
+          <button onClick={() => setIndex((i) => (i - 1 + slides.length) % slides.length)} aria-label="Предыдущий баннер" className="hidden md:flex absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 items-center justify-center">
+            <ChevronLeft size={18} />
+          </button>
+          <button onClick={() => setIndex((i) => (i + 1) % slides.length)} aria-label="Следующий баннер" className="hidden md:flex absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 items-center justify-center">
+            <ChevronRight size={18} />
+          </button>
+          <div className="absolute bottom-3 right-4 flex gap-1.5">
+            {slides.map((s, i) => (
+              <button key={s.id} onClick={() => setIndex(i)} aria-label={`Баннер ${i + 1}`} className={`h-1.5 rounded-full transition-all ${i === index ? "w-5 bg-white" : "w-1.5 bg-white/50"}`} />
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 function HomePage({ go, openProduct }) {
-  const { products, reviews, news, promos } = useShop();
+  const { products, reviews, news, promos, categories } = useShop();
   const popular = [...products].sort((a, b) => b.rating * b.reviewsCount - a.rating * a.reviewsCount).slice(0, 4);
   const newest = products.filter((p) => p.isNew).slice(0, 4);
   const approvedReviews = reviews.filter((r) => r.approved).slice(0, 3);
@@ -887,7 +933,7 @@ function HomePage({ go, openProduct }) {
       {/* Категории — плитка как в приложении маркетплейса */}
       <Section className="pb-8">
         <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-          {CATEGORIES.map((c) => (
+          {categories.map((c) => (
             <button key={c.id} onClick={() => go("catalog", { category: c.id })} className="flex flex-col items-center gap-2 group">
               <span className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white border border-line flex items-center justify-center text-2xl md:text-3xl group-hover:border-accent group-active:scale-95 transition-all">{c.emoji}</span>
               <span className="text-[11.5px] md:text-[12.5px] text-ink text-center leading-tight">{c.name}</span>
@@ -1007,7 +1053,7 @@ function HomePage({ go, openProduct }) {
    ========================================================= */
 
 function CatalogPage({ openProduct, initialFilter, search, setSearch }) {
-  const { products } = useShop();
+  const { products, categories } = useShop();
   const [category, setCategory] = useState(initialFilter?.category || "all");
   const [sort, setSort] = useState("popular");
   const [specialFilter, setSpecialFilter] = useState(initialFilter?.filter || "all");
@@ -1025,7 +1071,7 @@ function CatalogPage({ openProduct, initialFilter, search, setSearch }) {
       if (specialFilter === "sale" && !p.sale) return false;
       if (search) {
         const q = search.toLowerCase();
-        const catName = CATEGORIES.find((c) => c.id === p.category)?.name || "";
+        const catName = categories.find((c) => c.id === p.category)?.name || "";
         if (!p.name.toLowerCase().includes(q) && !p.description.toLowerCase().includes(q) && !catName.toLowerCase().includes(q)) return false;
       }
       return true;
@@ -1037,9 +1083,9 @@ function CatalogPage({ openProduct, initialFilter, search, setSearch }) {
       default: list = [...list].sort((a, b) => b.rating * b.reviewsCount - a.rating * a.reviewsCount);
     }
     return list;
-  }, [products, category, sort, specialFilter, search]);
+  }, [products, category, sort, specialFilter, search, categories]);
 
-  const filterChips = [{ id: "all", name: "Все товары", emoji: "🛍" }, ...CATEGORIES];
+  const filterChips = [{ id: "all", name: "Все товары", emoji: "🛍" }, ...categories];
 
   return (
     <Section className="pt-6 pb-16">
@@ -1981,6 +2027,8 @@ function AdminPage({ go }) {
     { id: "dashboard", label: "Главная", icon: LayoutDashboard },
     { id: "orders", label: "Заказы", icon: Package },
     { id: "products", label: "Товары", icon: ImageIcon },
+    { id: "categories", label: "Категории", icon: Grid3x3 },
+    { id: "banner", label: "Баннер", icon: Sparkles },
     { id: "users", label: "Пользователи", icon: Users },
     { id: "reviews", label: "Отзывы", icon: MessageSquare },
     { id: "promos", label: "Акции", icon: Tag },
@@ -2012,6 +2060,8 @@ function AdminPage({ go }) {
       {section === "dashboard" && <AdminDashboard />}
       {section === "orders" && <AdminOrders />}
       {section === "products" && <AdminProducts />}
+      {section === "categories" && <AdminCategories />}
+      {section === "banner" && <AdminBanner />}
       {section === "users" && <AdminUsers />}
       {section === "reviews" && <AdminReviews />}
       {section === "promos" && <AdminPromos />}
@@ -2106,7 +2156,7 @@ function emptyProductForm() {
 }
 
 function AdminProducts() {
-  const { products, addProduct, updateProduct, deleteProduct, showToast } = useShop();
+  const { products, addProduct, updateProduct, deleteProduct, showToast, categories } = useShop();
   const [editing, setEditing] = useState(null); // null | "new" | product.id
   const [form, setForm] = useState(emptyProductForm());
   const fileRef = useRef(null);
@@ -2177,7 +2227,7 @@ function AdminProducts() {
           <div>
             <label className="text-[13px] text-stone mb-1.5 block">Категория</label>
             <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} className="w-full p-3 rounded-xl border border-line bg-white text-[14px]">
-              {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3.5">
@@ -2246,6 +2296,193 @@ function AdminProducts() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   АДМИН: КАТЕГОРИИ
+   ========================================================= */
+
+function AdminCategories() {
+  const { categories, addCategory, updateCategory, deleteCategory } = useShop();
+  const [editing, setEditing] = useState(null); // null | "new" | slug
+  const [form, setForm] = useState({ name: "", emoji: "📦" });
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = (c) => { setForm({ name: c.name, emoji: c.emoji }); setEditing(c.id); };
+  const startNew = () => { setForm({ name: "", emoji: "📦" }); setEditing("new"); };
+
+  const save = async () => {
+    if (!form.name.trim()) return;
+    setSaving(true);
+    try {
+      if (editing === "new") await addCategory(form.name.trim(), form.emoji.trim() || "📦");
+      else await updateCategory(editing, { name: form.name.trim(), emoji: form.emoji.trim() || "📦" });
+      setEditing(null);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="max-w-md">
+        <h3 className="font-display text-[20px] text-ink mb-4">{editing === "new" ? "Добавить категорию" : "Редактировать категорию"}</h3>
+        <div className="flex flex-col gap-3.5">
+          <Field label="Название" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Например: Свечи" />
+          <Field label="Эмодзи-иконка" value={form.emoji} onChange={(e) => setForm((f) => ({ ...f, emoji: e.target.value }))} placeholder="🕯️" />
+          <p className="text-[12.5px] text-stone">Скопируйте любой эмодзи из клавиатуры телефона (обычно значок 😀 рядом с полем ввода) и вставьте сюда.</p>
+          <div className="flex gap-3 mt-2">
+            <PrimaryButton onClick={save} disabled={saving}>{saving ? "Сохраняем…" : "Сохранить"}</PrimaryButton>
+            <SecondaryButton onClick={() => setEditing(null)}>Отмена</SecondaryButton>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <PrimaryButton className="mb-5" onClick={startNew}><Plus size={16} /> Добавить категорию</PrimaryButton>
+      {categories.length === 0 ? (
+        <EmptyState icon={Grid3x3} title="Категорий пока нет" subtitle="Добавьте первую категорию, чтобы она появилась на сайте." />
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {categories.map((c) => (
+            <div key={c.id} className="flex items-center gap-3 p-3 rounded-2xl bg-white border border-line/70">
+              <span className="text-2xl w-10 text-center">{c.emoji}</span>
+              <div className="flex-1 text-[14px] text-ink">{c.name}</div>
+              <button onClick={() => startEdit(c)} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-line/60 text-stone shrink-0"><Edit2 size={15} /></button>
+              <button onClick={() => deleteCategory(c.id)} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-line/60 text-red-500 shrink-0"><Trash size={15} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
+   АДМИН: БАННЕР ГЛАВНОЙ СТРАНИЦЫ
+   ========================================================= */
+
+function emptySlideForm() {
+  return { title: "", text: "", image: "", ctaText: "Подробнее", ctaPage: "catalog", active: true };
+}
+
+const SLIDE_TARGET_PAGES = [
+  { id: "catalog", label: "Каталог" },
+  { id: "promos", label: "Акции" },
+  { id: "custom", label: "Заказать своё" },
+  { id: "news", label: "Новости" },
+  { id: "reviews", label: "Отзывы" },
+  { id: "contacts", label: "Контакты" },
+];
+
+function AdminBanner() {
+  const { allHeroSlides, addHeroSlide, updateHeroSlide, deleteHeroSlide, showToast } = useShop();
+  const [editing, setEditing] = useState(null); // null | "new" | slide.id
+  const [form, setForm] = useState(emptySlideForm());
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const fileRef = useRef(null);
+
+  const startEdit = (s) => { setForm({ title: s.title, text: s.text || "", image: s.image || "", ctaText: s.ctaText, ctaPage: s.ctaPage, active: s.active }); setEditing(s.id); };
+  const startNew = () => { setForm(emptySlideForm()); setEditing("new"); };
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop();
+      const path = `banners/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error } = await supabase.storage.from("product-images").upload(path, file);
+      if (error) { showToast("Не удалось загрузить фото: " + error.message); return; }
+      const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+      setForm((f) => ({ ...f, image: data.publicUrl }));
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const save = async () => {
+    if (!form.title.trim()) return;
+    setSaving(true);
+    try {
+      if (editing === "new") await addHeroSlide(form);
+      else await updateHeroSlide(editing, form);
+      setEditing(null);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="max-w-lg">
+        <h3 className="font-display text-[20px] text-ink mb-4">{editing === "new" ? "Добавить слайд" : "Редактировать слайд"}</h3>
+        <div className="flex flex-col gap-3.5">
+          <Field label="Заголовок" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="Например: Скидки на подарки" />
+          <div>
+            <label className="text-[13px] text-stone mb-1.5 block">Текст под заголовком (необязательно)</label>
+            <textarea value={form.text} onChange={(e) => setForm((f) => ({ ...f, text: e.target.value }))} rows={2} className="w-full p-3 rounded-xl border border-line outline-none text-[14px] resize-none focus:border-accent bg-white" />
+          </div>
+          <div>
+            <label className="text-[13px] text-stone mb-1.5 block">Фото слайда</label>
+            <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
+            <button onClick={() => fileRef.current?.click()} disabled={uploading} className="flex items-center gap-2 px-4 py-3 rounded-xl border border-dashed border-line text-[13.5px] text-stone hover:border-accent disabled:opacity-50">
+              <Upload size={16} /> {uploading ? "Загружаем…" : "Загрузить фото"}
+            </button>
+            {form.image && (
+              <div className="relative w-full mt-2.5">
+                <img src={form.image} className="w-full h-32 object-cover rounded-xl" alt="" />
+                <button onClick={() => setForm((f) => ({ ...f, image: "" }))} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-ink text-cream flex items-center justify-center"><X size={13} /></button>
+              </div>
+            )}
+          </div>
+          <Field label="Текст на кнопке" value={form.ctaText} onChange={(e) => setForm((f) => ({ ...f, ctaText: e.target.value }))} placeholder="Например: Смотреть акции" />
+          <div>
+            <label className="text-[13px] text-stone mb-1.5 block">Куда ведёт кнопка</label>
+            <select value={form.ctaPage} onChange={(e) => setForm((f) => ({ ...f, ctaPage: e.target.value }))} className="w-full p-3 rounded-xl border border-line bg-white text-[14px]">
+              {SLIDE_TARGET_PAGES.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+          </div>
+          <label className="flex items-center gap-2 text-[13.5px]">
+            <input type="checkbox" checked={form.active} onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))} className="accent-accent w-4 h-4" /> Показывать на сайте
+          </label>
+          <div className="flex gap-3 mt-2">
+            <PrimaryButton onClick={save} disabled={saving || uploading}>{saving ? "Сохраняем…" : "Сохранить"}</PrimaryButton>
+            <SecondaryButton onClick={() => setEditing(null)}>Отмена</SecondaryButton>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p className="text-[13.5px] text-stone mb-4">Слайды показываются на главной странице по очереди. Можно добавить сколько угодно.</p>
+      <PrimaryButton className="mb-5" onClick={startNew}><Plus size={16} /> Добавить слайд</PrimaryButton>
+      {allHeroSlides.length === 0 ? (
+        <EmptyState icon={Sparkles} title="Слайдов пока нет" subtitle="Добавьте первый слайд для баннера на главной." />
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {allHeroSlides.map((s) => (
+            <div key={s.id} className="flex items-center gap-3 p-3 rounded-2xl bg-white border border-line/70">
+              {s.image ? <img src={s.image} className="w-16 h-12 rounded-lg object-cover shrink-0" alt="" /> : <div className="w-16 h-12 rounded-lg bg-line/40 shrink-0" />}
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px] text-ink line-clamp-1">{s.title}</div>
+                <div className="text-[12px] text-stone">{s.active ? "Показывается" : "Скрыт"} · кнопка «{s.ctaText}»</div>
+              </div>
+              <button onClick={() => startEdit(s)} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-line/60 text-stone shrink-0"><Edit2 size={15} /></button>
+              <button onClick={() => deleteHeroSlide(s.id)} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-line/60 text-red-500 shrink-0"><Trash size={15} /></button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
