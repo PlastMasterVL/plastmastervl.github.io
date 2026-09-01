@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, createContext, useContext, useRef } from "react";
-import { Search, ShoppingCart, User, Heart, Menu, X, Plus, Minus, Trash2, Star, ChevronLeft, ChevronRight, Send, Phone, MapPin, Clock, Package, CheckCircle2, Circle, ArrowRight, Camera, Sparkles, Home as HomeIcon, Grid3x3, Settings, Newspaper, Tag, LayoutDashboard, Users, MessageSquare, Edit2, Trash, Image as ImageIcon, Video, Upload, LogOut, ChevronDown, Filter, SlidersHorizontal, Instagram, Send as TelegramIcon, Sun, Moon } from "lucide-react";
+import { Search, ShoppingCart, User, Heart, Menu, X, Plus, Minus, Trash2, Star, ChevronLeft, ChevronRight, Send, Phone, MapPin, Clock, Package, CheckCircle2, Circle, ArrowRight, Camera, Sparkles, Home as HomeIcon, Grid3x3, Settings, Newspaper, Tag, LayoutDashboard, Users, MessageSquare, Edit2, Trash, Image as ImageIcon, Video, Upload, LogOut, ChevronDown, Filter, SlidersHorizontal, Instagram, Send as TelegramIcon, Sun, Moon, Percent } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
 /* =========================================================
@@ -83,6 +83,7 @@ function mapOrderFromDb(row) {
     customerName: row.customer_name, phone: row.phone, address: row.address,
     city: row.city, zip: row.zip, comment: row.comment,
     items: row.items, total: row.total, status: row.status, date: row.created_at,
+    promoCode: row.promo_code, discountAmount: row.discount_amount,
   };
 }
 
@@ -130,6 +131,7 @@ function ShopProvider({ children }) {
   const [categories, setCategories] = useState([]);
   const [heroSlides, setHeroSlides] = useState([]);
   const [allHeroSlides, setAllHeroSlides] = useState([]);
+  const [promoCodes, setPromoCodes] = useState([]);
   const [orders, setOrders] = useState([]);
   const [users, setUsers] = useState([]); // упрощённый список для админки (только свои профили не покажет — см. ограничение ниже)
   const [session, setSession] = useState(null);
@@ -256,10 +258,11 @@ function ShopProvider({ children }) {
       loadAllUsersForAdmin();
       loadCustomRequestsForAdmin();
       loadAllHeroSlidesForAdmin();
+      loadPromoCodesForAdmin();
     } else {
       loadMyOrders(userId);
     }
-  }, [session, loadProfile, loadMyNotifications, loadAllOrdersForAdmin, loadAllUsersForAdmin, loadCustomRequestsForAdmin, loadMyOrders, loadAllHeroSlidesForAdmin]);
+  }, [session, loadProfile, loadMyNotifications, loadAllOrdersForAdmin, loadAllUsersForAdmin, loadCustomRequestsForAdmin, loadMyOrders, loadAllHeroSlidesForAdmin, loadPromoCodesForAdmin]);
 
   /* --- Авторизация --- */
   const register = useCallback(async (data) => {
@@ -342,29 +345,34 @@ function ShopProvider({ children }) {
   }, [session, favorites]);
 
   /* --- Заказы --- */
-  const createOrder = useCallback(async (formData, cartItems) => {
+  const createOrder = useCallback(async (formData, cartItems, appliedPromo) => {
     const items = cartItems.map((ci) => {
       const p = products.find((pp) => pp.id === ci.productId);
       return { productId: ci.productId, name: p?.name || "Товар", price: p ? salePrice(p) : 0, qty: ci.qty, color: ci.color };
     });
-    const total = items.reduce((s, i) => s + i.price * i.qty, 0);
+    const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0);
+    const discountAmount = appliedPromo ? Math.round(subtotal * (appliedPromo.discountPercent / 100)) : 0;
+    const total = subtotal - discountAmount;
     const payload = {
       user_id: session?.user?.id || null,
       customer_name: `${formData.firstName} ${formData.lastName}`.trim(),
       phone: formData.phone, address: formData.address, city: formData.city, zip: formData.zip,
       comment: formData.comment || "", items, total, status: "new",
+      promo_code: appliedPromo ? appliedPromo.code : null,
+      discount_amount: discountAmount || null,
     };
     const { data, error } = await supabase.from("orders").insert(payload).select().single();
     if (error) { showToast("Не удалось оформить заказ: " + error.message); return null; }
     const order = mapOrderFromDb(data);
     setOrders((o) => [order, ...o]);
     clearCart();
+    if (appliedPromo) registerPromoCodeUse(appliedPromo.id, appliedPromo.usedCount);
     if (session?.user?.id) {
       await supabase.from("notifications").insert({ user_id: session.user.id, text: `Ваш заказ №${order.number} принят.` });
       loadMyNotifications(session.user.id);
     }
     return order;
-  }, [products, session, clearCart, showToast, loadMyNotifications]);
+  }, [products, session, clearCart, showToast, loadMyNotifications, registerPromoCodeUse]);
 
   const updateOrderStatus = useCallback(async (orderId, status) => {
     const { data, error } = await supabase.from("orders").update({ status }).eq("id", orderId).select().single();
@@ -492,6 +500,44 @@ function ShopProvider({ children }) {
     setPromos((ps) => ps.filter((p) => p.id !== id));
   }, []);
 
+  /* --- Промокоды --- */
+  const loadPromoCodesForAdmin = useCallback(async () => {
+    const { data, error } = await supabase.from("promo_codes").select("*").order("created_at", { ascending: false });
+    if (!error && data) setPromoCodes(data.map((c) => ({ id: c.id, code: c.code, discountPercent: c.discount_percent, active: c.active, maxUses: c.max_uses, usedCount: c.used_count, expiresAt: c.expires_at })));
+  }, []);
+
+  const addPromoCode = useCallback(async (data) => {
+    const payload = { code: data.code.trim().toUpperCase(), discount_percent: Number(data.discountPercent) || 0, max_uses: data.maxUses ? Number(data.maxUses) : null, expires_at: data.expiresAt || null, active: true };
+    const { data: row, error } = await supabase.from("promo_codes").insert(payload).select().single();
+    if (error) { showToast("Ошибка: " + error.message); return; }
+    setPromoCodes((cs) => [{ id: row.id, code: row.code, discountPercent: row.discount_percent, active: row.active, maxUses: row.max_uses, usedCount: row.used_count, expiresAt: row.expires_at }, ...cs]);
+  }, [showToast]);
+
+  const togglePromoCodeActive = useCallback(async (id, active) => {
+    await supabase.from("promo_codes").update({ active }).eq("id", id);
+    setPromoCodes((cs) => cs.map((c) => (c.id === id ? { ...c, active } : c)));
+  }, []);
+
+  const deletePromoCode = useCallback(async (id) => {
+    await supabase.from("promo_codes").delete().eq("id", id);
+    setPromoCodes((cs) => cs.filter((c) => c.id !== id));
+  }, []);
+
+  const validatePromoCode = useCallback(async (codeInput) => {
+    const code = (codeInput || "").trim().toUpperCase();
+    if (!code) return { ok: false, error: "Введите промокод." };
+    const { data, error } = await supabase.from("promo_codes").select("*").eq("code", code).maybeSingle();
+    if (error || !data) return { ok: false, error: "Промокод не найден." };
+    if (!data.active) return { ok: false, error: "Промокод больше не действует." };
+    if (data.expires_at && new Date(data.expires_at) < new Date()) return { ok: false, error: "Срок действия промокода истёк." };
+    if (data.max_uses && data.used_count >= data.max_uses) return { ok: false, error: "Промокод уже использован максимальное число раз." };
+    return { ok: true, id: data.id, code: data.code, discountPercent: data.discount_percent, usedCount: data.used_count };
+  }, []);
+
+  const registerPromoCodeUse = useCallback(async (id, currentUsedCount) => {
+    await supabase.from("promo_codes").update({ used_count: currentUsedCount + 1 }).eq("id", id);
+  }, []);
+
   /* --- Заявки "Заказать своё" --- */
   const submitCustomRequest = useCallback(async (data) => {
     const payload = {
@@ -505,7 +551,7 @@ function ShopProvider({ children }) {
 
   const value = {
     ready, products, reviews, news, promos, orders, users, cart, favorites, customRequests, notifications,
-    categories, heroSlides, allHeroSlides,
+    categories, heroSlides, allHeroSlides, promoCodes,
     currentUser, isAdmin, toast, showToast,
     register, login, logout, updateProfile, verifySignupCode, resendSignupCode,
     addToCart, updateCartQty, removeFromCart, clearCart,
@@ -513,6 +559,7 @@ function ShopProvider({ children }) {
     addProduct, updateProduct, deleteProduct,
     addCategory, updateCategory, deleteCategory,
     addHeroSlide, updateHeroSlide, deleteHeroSlide,
+    addPromoCode, togglePromoCodeActive, deletePromoCode, validatePromoCode,
     addReview, moderateReview, addNews, deleteNews, addPromo, updatePromo, deletePromo, submitCustomRequest,
   };
 
@@ -1295,7 +1342,23 @@ function ProductPage({ product, go, back }) {
           </div>
         )}
       </div>
+
+      <RelatedProducts product={product} go={go} />
     </Section>
+  );
+}
+
+function RelatedProducts({ product, go }) {
+  const { products } = useShop();
+  const related = products.filter((p) => p.category === product.category && p.id !== product.id).slice(0, 4);
+  if (related.length === 0) return null;
+  return (
+    <div className="mt-14 pt-10 border-t border-line">
+      <h2 className="font-display text-[20px] md:text-[24px] text-ink mb-5">Похожие товары</h2>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-4">
+        {related.map((p) => <ProductCard key={p.id} product={p} onOpen={(prod) => go("product", { product: prod })} />)}
+      </div>
+    </div>
   );
 }
 
@@ -1394,9 +1457,29 @@ function CartPage({ go }) {
    ========================================================= */
 
 function CheckoutPage({ go }) {
-  const { cart, products, currentUser, createOrder } = useShop();
+  const { cart, products, currentUser, createOrder, validatePromoCode } = useShop();
   const items = cart.map((ci) => ({ ...ci, product: products.find((p) => p.id === ci.productId) })).filter((i) => i.product);
-  const total = items.reduce((s, i) => s + salePrice(i.product) * i.qty, 0);
+  const subtotal = items.reduce((s, i) => s + salePrice(i.product) * i.qty, 0);
+
+  const [promoInput, setPromoInput] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState(null);
+  const [promoError, setPromoError] = useState("");
+  const [checkingPromo, setCheckingPromo] = useState(false);
+
+  const discountAmount = appliedPromo ? Math.round(subtotal * (appliedPromo.discountPercent / 100)) : 0;
+  const total = subtotal - discountAmount;
+
+  const applyPromo = async () => {
+    setPromoError("");
+    setCheckingPromo(true);
+    try {
+      const res = await validatePromoCode(promoInput);
+      if (!res.ok) { setPromoError(res.error); setAppliedPromo(null); return; }
+      setAppliedPromo(res);
+    } finally {
+      setCheckingPromo(false);
+    }
+  };
 
   const [form, setForm] = useState({
     firstName: currentUser?.name?.split(" ")[0] || "",
@@ -1424,7 +1507,7 @@ function CheckoutPage({ go }) {
     setError("");
     setSubmitting(true);
     try {
-      const order = await createOrder(form, items);
+      const order = await createOrder(form, items, appliedPromo);
       if (!order) { setError("Не удалось оформить заказ. Попробуйте ещё раз."); return; }
       setOrderResult(order);
     } finally {
@@ -1440,6 +1523,7 @@ function CheckoutPage({ go }) {
     const waMessage = encodeURIComponent(
       `Здравствуйте! Оформил(а) заказ №${orderResult.number} на сайте PlastMaster.\n` +
       `Состав заказа:\n${orderResult.items.map((i) => `— ${i.name}${i.color ? ` (${i.color})` : ""} × ${i.qty}`).join("\n")}\n` +
+      (orderResult.promoCode ? `Промокод: ${orderResult.promoCode} (скидка ${formatPrice(orderResult.discountAmount || 0)})\n` : "") +
       `Сумма: ${formatPrice(orderResult.total)}\n` +
       `Хочу уточнить оплату и доставку.`
     );
@@ -1498,7 +1582,35 @@ function CheckoutPage({ go }) {
                 </div>
               ))}
             </div>
-            <div className="flex justify-between text-[18px] font-display text-ink pt-3 border-t border-line mb-5"><span>Итого</span><span>{formatPrice(total)}</span></div>
+
+            {appliedPromo ? (
+              <div className="flex items-center justify-between mb-3 px-3 py-2 rounded-lg bg-sage/12 text-[13px]">
+                <span className="text-sage-dark font-medium flex items-center gap-1"><Percent size={13} /> {appliedPromo.code} · −{appliedPromo.discountPercent}%</span>
+                <button onClick={() => { setAppliedPromo(null); setPromoInput(""); }} className="text-stone"><X size={14} /></button>
+              </div>
+            ) : (
+              <div className="mb-3">
+                <div className="flex gap-2">
+                  <input value={promoInput} onChange={(e) => setPromoInput(e.target.value)} placeholder="Промокод" className="flex-1 min-w-0 p-2.5 rounded-lg border border-line outline-none text-[13.5px] focus:border-accent bg-white" />
+                  <button onClick={applyPromo} disabled={checkingPromo || !promoInput.trim()} className="px-3.5 py-2.5 rounded-lg border border-line text-[13px] font-medium disabled:opacity-40">{checkingPromo ? "…" : "Применить"}</button>
+                </div>
+                {promoError && <div className="text-[12px] text-red-600 mt-1.5">{promoError}</div>}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-1 pt-3 border-t border-line mb-5">
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-[13.5px] text-stone">
+                  <span>Подытог</span><span>{formatPrice(subtotal)}</span>
+                </div>
+              )}
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-[13.5px] text-sage-dark">
+                  <span>Скидка по промокоду</span><span>−{formatPrice(discountAmount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-[18px] font-display text-ink"><span>Итого</span><span>{formatPrice(total)}</span></div>
+            </div>
             <PrimaryButton full onClick={submit} disabled={submitting}>{submitting ? "Оформляем…" : "Подтвердить заказ"}</PrimaryButton>
             <p className="text-[11.5px] text-stone mt-2 text-center">Оплата не автоматическая — мы свяжемся с вами для согласования способа оплаты.</p>
           </div>
@@ -1758,6 +1870,7 @@ function OrderCard({ order, go }) {
         <span className="font-display text-[16px] text-ink">{formatPrice(order.total)}</span>
         <Badge tone={order.status === "cancelled" ? "stone" : "accent"}>{st.emoji} {st.label}</Badge>
       </div>
+      {order.promoCode && <div className="text-[12px] text-sage-dark mb-2">Промокод {order.promoCode} (−{formatPrice(order.discountAmount || 0)})</div>}
       <OrderStatusTrack status={order.status} />
       {order.status === "received" && <p className="text-[12px] text-sage-dark mt-2">Спасибо за заказ! Вы можете оставить отзыв на странице товара.</p>}
     </div>
@@ -2055,6 +2168,7 @@ function AdminPage({ go }) {
     { id: "products", label: "Товары", icon: ImageIcon },
     { id: "categories", label: "Категории", icon: Grid3x3 },
     { id: "banner", label: "Баннер", icon: Sparkles },
+    { id: "promocodes", label: "Промокоды", icon: Percent },
     { id: "users", label: "Пользователи", icon: Users },
     { id: "reviews", label: "Отзывы", icon: MessageSquare },
     { id: "promos", label: "Акции", icon: Tag },
@@ -2088,6 +2202,7 @@ function AdminPage({ go }) {
       {section === "products" && <AdminProducts />}
       {section === "categories" && <AdminCategories />}
       {section === "banner" && <AdminBanner />}
+      {section === "promocodes" && <AdminPromoCodes />}
       {section === "users" && <AdminUsers />}
       {section === "reviews" && <AdminReviews />}
       {section === "promos" && <AdminPromos />}
@@ -2153,6 +2268,7 @@ function AdminOrders() {
                   <div><span className="text-stone">Город: </span><span className="text-ink">{o.city}</span></div>
                   <div className="sm:col-span-2"><span className="text-stone">Адрес: </span><span className="text-ink">{o.address}{o.zip ? `, ${o.zip}` : ""}</span></div>
                   {o.comment && <div className="sm:col-span-2"><span className="text-stone">Комментарий: </span><span className="text-ink">{o.comment}</span></div>}
+                  {o.promoCode && <div className="sm:col-span-2"><span className="text-stone">Промокод: </span><span className="text-sage-dark">{o.promoCode} (−{formatPrice(o.discountAmount || 0)})</span></div>}
                 </div>
                 <div className="flex flex-col gap-1 mb-3">
                   {o.items.map((it, i) => (
@@ -2505,6 +2621,82 @@ function AdminBanner() {
               </div>
               <button onClick={() => startEdit(s)} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-line/60 text-stone shrink-0"><Edit2 size={15} /></button>
               <button onClick={() => deleteHeroSlide(s.id)} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-line/60 text-red-500 shrink-0"><Trash size={15} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
+   АДМИН: ПРОМОКОДЫ
+   ========================================================= */
+
+function emptyPromoCodeForm() {
+  return { code: "", discountPercent: "10", maxUses: "", expiresAt: "" };
+}
+
+function AdminPromoCodes() {
+  const { promoCodes, addPromoCode, togglePromoCodeActive, deletePromoCode, showToast } = useShop();
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState(emptyPromoCodeForm());
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    if (!form.code.trim() || !form.discountPercent) { showToast("Заполните код и размер скидки"); return; }
+    setSaving(true);
+    try {
+      await addPromoCode(form);
+      setForm(emptyPromoCodeForm());
+      setCreating(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      {creating ? (
+        <div className="max-w-md mb-6 p-4 rounded-2xl bg-white border border-line/70">
+          <div className="text-[14px] font-medium text-ink mb-3">Новый промокод</div>
+          <div className="flex flex-col gap-3">
+            <Field label="Код (например, SUMMER10)" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))} />
+            <Field label="Скидка, %" type="number" value={form.discountPercent} onChange={(e) => setForm((f) => ({ ...f, discountPercent: e.target.value }))} />
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Лимит использований (необязательно)" type="number" value={form.maxUses} onChange={(e) => setForm((f) => ({ ...f, maxUses: e.target.value }))} />
+              <div>
+                <label className="text-[13px] text-stone mb-1.5 block">Действует до (необязательно)</label>
+                <input type="date" value={form.expiresAt} onChange={(e) => setForm((f) => ({ ...f, expiresAt: e.target.value }))} className="w-full p-3 rounded-xl border border-line outline-none text-[14px] bg-white" />
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <PrimaryButton onClick={save} disabled={saving}>{saving ? "Создаём…" : "Создать"}</PrimaryButton>
+              <SecondaryButton onClick={() => setCreating(false)}>Отмена</SecondaryButton>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <PrimaryButton className="mb-5" onClick={() => setCreating(true)}><Plus size={16} /> Добавить промокод</PrimaryButton>
+      )}
+
+      {promoCodes.length === 0 ? (
+        <EmptyState icon={Percent} title="Промокодов пока нет" subtitle="Создайте код для акции — покупатели будут вводить его при оформлении заказа." />
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {promoCodes.map((c) => (
+            <div key={c.id} className="flex items-center gap-3 p-3.5 rounded-2xl bg-white border border-line/70">
+              <div className="flex-1 min-w-0">
+                <div className="text-[14.5px] font-mono font-medium text-ink">{c.code}</div>
+                <div className="text-[12px] text-stone">
+                  Скидка {c.discountPercent}% · использован {c.usedCount}{c.maxUses ? ` из ${c.maxUses}` : " раз"}
+                  {c.expiresAt ? ` · до ${formatDate(c.expiresAt)}` : ""}
+                </div>
+              </div>
+              <button onClick={() => togglePromoCodeActive(c.id, !c.active)} className={`px-3 py-1.5 rounded-full text-[12px] font-medium shrink-0 ${c.active ? "bg-sage/15 text-sage-dark" : "bg-line/60 text-stone"}`}>
+                {c.active ? "Активен" : "Выключен"}
+              </button>
+              <button onClick={() => deletePromoCode(c.id)} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-line/60 text-red-500 shrink-0"><Trash size={15} /></button>
             </div>
           ))}
         </div>
