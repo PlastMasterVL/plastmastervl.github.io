@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, createContext, useContext, useRef } from "react";
 import { Search, ShoppingCart, User, Heart, Menu, X, Plus, Minus, Trash2, Star, ChevronLeft, ChevronRight, Send, Phone, MapPin, Clock, Package, CheckCircle2, Circle, ArrowRight, Camera, Sparkles, Home as HomeIcon, Grid3x3, Settings, Newspaper, Tag, LayoutDashboard, Users, MessageSquare, Edit2, Trash, Image as ImageIcon, Video, Upload, LogOut, ChevronDown, Filter, SlidersHorizontal, Instagram, Send as TelegramIcon, Sun, Moon, Percent } from "lucide-react";
+import { BrowserRouter, Routes, Route, useNavigate, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "./supabaseClient";
 
 /* =========================================================
@@ -27,6 +28,8 @@ const ADMIN_EMAILS = ["mamaevv35@gmail.com"]; // почта владельца �
 const PLACEHOLDER_IMG = (seed, w = 600, h = 600, bg = "E8E1D4", fg = "8B9A8C") =>
   `https://placehold.co/${w}x${h}/${bg}/${fg}?text=${encodeURIComponent(seed)}`;
 
+const LOW_STOCK_THRESHOLD = 5; // при остатке <= этого числа показываем "Осталось N шт."
+
 function uid(prefix = "id") {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -43,6 +46,21 @@ function formatDate(d) {
 function salePrice(p) {
   if (!p.sale) return p.price;
   return Math.round(p.price * (1 - p.sale / 100));
+}
+
+async function shareProduct(product, showToast) {
+  const url = `${window.location.origin}${window.location.pathname.replace(/\/$/, "")}`.replace(/\/product\/.*$/, "") + `/product/${product.id}`;
+  const shareData = { title: product.name, text: `${product.name} — ${formatPrice(salePrice(product))} на сайте PlastMaster`, url };
+  try {
+    if (navigator.share) {
+      await navigator.share(shareData);
+    } else {
+      await navigator.clipboard.writeText(url);
+      showToast("Ссылка на товар скопирована!");
+    }
+  } catch (e) {
+    // пользователь отменил системное окно "поделиться" — ничего не делаем
+  }
 }
 
 // Преобразование строки из БД (snake_case) в формат, который использует UI (camelCase)
@@ -717,6 +735,9 @@ function ProductCard({ product, onOpen }) {
           {product.sale && <span className="bg-accent text-white text-[11px] font-bold px-1.5 py-0.5 rounded">-{product.sale}%</span>}
           {product.isNew && !product.sale && <span className="bg-sage text-white text-[10.5px] font-medium px-1.5 py-0.5 rounded">Новинка</span>}
           {!product.inStock && <span className="bg-stone text-white text-[10.5px] font-medium px-1.5 py-0.5 rounded">Нет в наличии</span>}
+          {product.inStock && product.qty > 0 && product.qty <= LOW_STOCK_THRESHOLD && (
+            <span className="bg-red-600 text-white text-[10.5px] font-medium px-1.5 py-0.5 rounded">Осталось {product.qty} шт.</span>
+          )}
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); toggleFavorite(product.id); }}
@@ -1217,7 +1238,7 @@ function CatalogPage({ openProduct, initialFilter, search, setSearch }) {
    ========================================================= */
 
 function ProductPage({ product, go, back }) {
-  const { addToCart, favorites, toggleFavorite, reviews, currentUser, orders } = useShop();
+  const { addToCart, favorites, toggleFavorite, reviews, currentUser, orders, showToast } = useShop();
   const [activeImg, setActiveImg] = useState(0);
   const [color, setColor] = useState(product.colors?.[0] || null);
   const [qty, setQty] = useState(1);
@@ -1239,9 +1260,14 @@ function ProductPage({ product, go, back }) {
         <div>
           <div className="aspect-square rounded-[22px] overflow-hidden bg-line/40 mb-3 relative">
             <img src={product.images[activeImg]} alt={product.name} className="w-full h-full object-cover" />
-            <button onClick={() => toggleFavorite(product.id)} className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center">
-              <Heart size={18} fill={isFav ? "#C77B4A" : "none"} stroke={isFav ? "#C77B4A" : "#2B2A28"} />
-            </button>
+            <div className="absolute top-3 right-3 flex gap-2">
+              <button onClick={() => shareProduct(product, showToast)} aria-label="Поделиться" className="w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center">
+                <Send size={16} />
+              </button>
+              <button onClick={() => toggleFavorite(product.id)} className="w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center">
+                <Heart size={18} fill={isFav ? "#C77B4A" : "none"} stroke={isFav ? "#C77B4A" : "#2B2A28"} />
+              </button>
+            </div>
           </div>
           <div className="flex gap-2.5">
             {product.images.map((img, i) => (
@@ -1296,6 +1322,10 @@ function ProductPage({ product, go, back }) {
             </div>
           </div>
 
+          {product.inStock && product.qty > 0 && product.qty <= LOW_STOCK_THRESHOLD && (
+            <p className="text-[13px] text-red-600 font-medium mb-3">🔥 Осталось всего {product.qty} шт. — успейте заказать</p>
+          )}
+
           {product.inStock ? (
             <PrimaryButton full className="!bg-cart hover:!bg-cart-dark" onClick={() => addToCart(product.id, color, qty)}><ShoppingCart size={17} /> Добавить в корзину</PrimaryButton>
           ) : (
@@ -1306,7 +1336,7 @@ function ProductPage({ product, go, back }) {
             <div><div className="text-[12px] text-stone">Размер</div><div className="text-[14px] text-ink">{product.sizes}</div></div>
             <div><div className="text-[12px] text-stone">Материал</div><div className="text-[14px] text-ink">{product.material}</div></div>
             <div><div className="text-[12px] text-stone">Срок изготовления</div><div className="text-[14px] text-ink">{product.craftTime}</div></div>
-            <div><div className="text-[12px] text-stone">Наличие</div><div className="text-[14px] text-ink">{product.inStock ? `В наличии (${product.qty} шт.)` : "Под заказ"}</div></div>
+            <div><div className="text-[12px] text-stone">Наличие</div><div className={`text-[14px] ${product.inStock && product.qty > 0 && product.qty <= LOW_STOCK_THRESHOLD ? "text-red-600 font-medium" : "text-ink"}`}>{product.inStock ? `В наличии (${product.qty} шт.)` : "Под заказ"}</div></div>
           </div>
         </div>
       </div>
@@ -2998,29 +3028,61 @@ function AdminCustomRequests() {
    ГЛАВНЫЙ КОМПОНЕНТ
    ========================================================= */
 
+/* =========================================================
+   МАРШРУТИЗАЦИЯ — соответствие внутренних имён страниц реальным адресам
+   ========================================================= */
+
+const PAGE_TO_PATH = {
+  home: "/",
+  catalog: "/catalog",
+  favorites: "/favorites",
+  cart: "/cart",
+  checkout: "/checkout",
+  auth: "/auth",
+  account: "/account",
+  admin: "/admin",
+  custom: "/custom",
+  promos: "/promos",
+  news: "/news",
+  reviews: "/reviews",
+  contacts: "/contacts",
+  privacy: "/privacy",
+};
+
+function pathToPageId(pathname) {
+  if (pathname.startsWith("/product/")) return "product";
+  const found = Object.entries(PAGE_TO_PATH).find(([, path]) => path === pathname);
+  return found ? found[0] : "home";
+}
+
 function AppShell() {
-  const { ready, toast } = useShop();
-  const [page, setPage] = useState("home");
-  const [pageParams, setPageParams] = useState({});
+  const { ready, toast, products } = useShop();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [search, setSearch] = useState("");
-  const [selectedProduct, setSelectedProduct] = useState(null);
+
+  const page = pathToPageId(location.pathname);
 
   const go = useCallback((p, params = {}) => {
     if (p === "product" && params.product) {
-      setSelectedProduct(params.product);
-      setPage("product");
+      navigate(`/product/${params.product.id}`);
+    } else if (p === "catalog" && (params.category || params.filter)) {
+      const qs = new URLSearchParams(params).toString();
+      navigate(`/catalog?${qs}`);
+    } else if (p === "account" && params.tab) {
+      navigate(`/account?tab=${params.tab}`);
+    } else if (p === "auth" && params.redirectTo) {
+      navigate(`/auth?redirectTo=${params.redirectTo}`);
     } else {
-      setPage(p);
-      setPageParams(params);
+      navigate(PAGE_TO_PATH[p] || "/");
     }
     window.scrollTo({ top: 0, behavior: "instant" });
-  }, []);
+  }, [navigate]);
 
   const openProduct = useCallback((product) => {
-    setSelectedProduct(product);
-    setPage("product");
+    navigate(`/product/${product.id}`);
     window.scrollTo({ top: 0, behavior: "instant" });
-  }, []);
+  }, [navigate]);
 
   if (!ready) {
     return (
@@ -3034,35 +3096,85 @@ function AppShell() {
     <div className="min-h-screen bg-cream text-ink font-body flex flex-col">
       <Header page={page} go={go} search={search} setSearch={setSearch} />
       <main className="flex-1">
-        {page === "home" && <HomePage go={go} openProduct={openProduct} />}
-        {page === "catalog" && <CatalogPage openProduct={openProduct} initialFilter={pageParams} search={search} setSearch={setSearch} />}
-        {page === "product" && selectedProduct && <ProductPage product={selectedProduct} go={go} back={() => go("catalog")} />}
-        {page === "favorites" && <FavoritesPage openProduct={openProduct} go={go} />}
-        {page === "cart" && <CartPage go={go} />}
-        {page === "checkout" && <CheckoutPage go={go} />}
-        {page === "auth" && <AuthPage go={go} redirectTo={pageParams.redirectTo} />}
-        {page === "account" && <AccountPage go={go} initialTab={pageParams.tab} />}
-        {page === "admin" && <AdminPage go={go} />}
-        {page === "custom" && <CustomOrderPage />}
-        {page === "promos" && <PromosPage openProduct={openProduct} />}
-        {page === "news" && <NewsPage />}
-        {page === "reviews" && <ReviewsPage />}
-        {page === "contacts" && <ContactsPage />}
-        {page === "privacy" && <PrivacyPage />}
+        <Routes>
+          <Route path="/" element={<HomePage go={go} openProduct={openProduct} />} />
+          <Route path="/catalog" element={<CatalogRoute go={go} openProduct={openProduct} search={search} setSearch={setSearch} />} />
+          <Route path="/product/:id" element={<ProductRoute products={products} go={go} />} />
+          <Route path="/favorites" element={<FavoritesPage openProduct={openProduct} go={go} />} />
+          <Route path="/cart" element={<CartPage go={go} />} />
+          <Route path="/checkout" element={<CheckoutPage go={go} />} />
+          <Route path="/auth" element={<AuthRoute go={go} />} />
+          <Route path="/account" element={<AccountRoute go={go} />} />
+          <Route path="/admin" element={<AdminPage go={go} />} />
+          <Route path="/custom" element={<CustomOrderPage />} />
+          <Route path="/promos" element={<PromosPage openProduct={openProduct} />} />
+          <Route path="/news" element={<NewsPage />} />
+          <Route path="/reviews" element={<ReviewsPage />} />
+          <Route path="/contacts" element={<ContactsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="*" element={<HomePage go={go} openProduct={openProduct} />} />
+        </Routes>
       </main>
       <Footer go={go} />
       <BottomNav page={page} go={go} />
       <Toast text={toast} />
+      {page !== "admin" && page !== "checkout" && <FloatingWhatsApp />}
     </div>
+  );
+}
+
+function ProductRoute({ products, go }) {
+  const { id } = useParams();
+  const product = products.find((p) => p.id === id);
+  if (!product) {
+    return (
+      <Section className="pt-16 pb-16">
+        <EmptyState icon={Search} title="Товар не найден" subtitle="Возможно, он был удалён или ссылка устарела." action={<PrimaryButton className="mt-5" onClick={() => go("catalog")}>Перейти в каталог</PrimaryButton>} />
+      </Section>
+    );
+  }
+  return <ProductPage product={product} go={go} back={() => go("catalog")} />;
+}
+
+function CatalogRoute({ go, openProduct, search, setSearch }) {
+  const [params] = useSearchParams();
+  const initialFilter = { category: params.get("category") || undefined, filter: params.get("filter") || undefined };
+  return <CatalogPage openProduct={openProduct} initialFilter={initialFilter} search={search} setSearch={setSearch} />;
+}
+
+function AccountRoute({ go }) {
+  const [params] = useSearchParams();
+  return <AccountPage go={go} initialTab={params.get("tab") || undefined} />;
+}
+
+function AuthRoute({ go }) {
+  const [params] = useSearchParams();
+  return <AuthPage go={go} redirectTo={params.get("redirectTo") || undefined} />;
+}
+
+function FloatingWhatsApp() {
+  const message = encodeURIComponent("Здравствуйте! У меня есть вопрос по сайту PlastMaster.");
+  return (
+    <a
+      href={`https://wa.me/79681523679?text=${message}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="Написать в WhatsApp"
+      className="fixed right-4 bottom-20 md:bottom-6 z-40 w-14 h-14 rounded-full bg-[#25D366] hover:bg-[#1DA851] text-white flex items-center justify-center shadow-lg active:scale-95 transition-all"
+    >
+      <MessageSquare size={26} />
+    </a>
   );
 }
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <ShopProvider>
-        <AppShell />
-      </ShopProvider>
-    </ThemeProvider>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
+      <ThemeProvider>
+        <ShopProvider>
+          <AppShell />
+        </ShopProvider>
+      </ThemeProvider>
+    </BrowserRouter>
   );
 }
