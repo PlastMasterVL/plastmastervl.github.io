@@ -196,6 +196,11 @@ function ShopProvider({ children }) {
     if (!error && data) setAllHeroSlides(data.map((s) => ({ id: s.id, title: s.title, text: s.text, image: s.image, ctaText: s.cta_text, ctaPage: s.cta_page, sortOrder: s.sort_order, active: s.active })));
   }, []);
 
+  const loadPromoCodesForAdmin = useCallback(async () => {
+    const { data, error } = await supabase.from("promo_codes").select("*").order("created_at", { ascending: false });
+    if (!error && data) setPromoCodes(data.map((c) => ({ id: c.id, code: c.code, discountPercent: c.discount_percent, active: c.active, maxUses: c.max_uses, usedCount: c.used_count, expiresAt: c.expires_at })));
+  }, []);
+
   // --- Данные, зависящие от авторизации ---
   const loadMyOrders = useCallback(async (userId) => {
     if (!userId) { setOrders([]); return; }
@@ -343,6 +348,39 @@ function ShopProvider({ children }) {
       setFavorites((f) => [...f, productId]);
     }
   }, [session, favorites]);
+
+  /* --- Промокоды --- */
+  const addPromoCode = useCallback(async (data) => {
+    const payload = { code: data.code.trim().toUpperCase(), discount_percent: Number(data.discountPercent) || 0, max_uses: data.maxUses ? Number(data.maxUses) : null, expires_at: data.expiresAt || null, active: true };
+    const { data: row, error } = await supabase.from("promo_codes").insert(payload).select().single();
+    if (error) { showToast("Ошибка: " + error.message); return; }
+    setPromoCodes((cs) => [{ id: row.id, code: row.code, discountPercent: row.discount_percent, active: row.active, maxUses: row.max_uses, usedCount: row.used_count, expiresAt: row.expires_at }, ...cs]);
+  }, [showToast]);
+
+  const togglePromoCodeActive = useCallback(async (id, active) => {
+    await supabase.from("promo_codes").update({ active }).eq("id", id);
+    setPromoCodes((cs) => cs.map((c) => (c.id === id ? { ...c, active } : c)));
+  }, []);
+
+  const deletePromoCode = useCallback(async (id) => {
+    await supabase.from("promo_codes").delete().eq("id", id);
+    setPromoCodes((cs) => cs.filter((c) => c.id !== id));
+  }, []);
+
+  const validatePromoCode = useCallback(async (codeInput) => {
+    const code = (codeInput || "").trim().toUpperCase();
+    if (!code) return { ok: false, error: "Введите промокод." };
+    const { data, error } = await supabase.from("promo_codes").select("*").eq("code", code).maybeSingle();
+    if (error || !data) return { ok: false, error: "Промокод не найден." };
+    if (!data.active) return { ok: false, error: "Промокод больше не действует." };
+    if (data.expires_at && new Date(data.expires_at) < new Date()) return { ok: false, error: "Срок действия промокода истёк." };
+    if (data.max_uses && data.used_count >= data.max_uses) return { ok: false, error: "Промокод уже использован максимальное число раз." };
+    return { ok: true, id: data.id, code: data.code, discountPercent: data.discount_percent, usedCount: data.used_count };
+  }, []);
+
+  const registerPromoCodeUse = useCallback(async (id, currentUsedCount) => {
+    await supabase.from("promo_codes").update({ used_count: currentUsedCount + 1 }).eq("id", id);
+  }, []);
 
   /* --- Заказы --- */
   const createOrder = useCallback(async (formData, cartItems, appliedPromo) => {
@@ -498,44 +536,6 @@ function ShopProvider({ children }) {
   const deletePromo = useCallback(async (id) => {
     await supabase.from("promos").delete().eq("id", id);
     setPromos((ps) => ps.filter((p) => p.id !== id));
-  }, []);
-
-  /* --- Промокоды --- */
-  const loadPromoCodesForAdmin = useCallback(async () => {
-    const { data, error } = await supabase.from("promo_codes").select("*").order("created_at", { ascending: false });
-    if (!error && data) setPromoCodes(data.map((c) => ({ id: c.id, code: c.code, discountPercent: c.discount_percent, active: c.active, maxUses: c.max_uses, usedCount: c.used_count, expiresAt: c.expires_at })));
-  }, []);
-
-  const addPromoCode = useCallback(async (data) => {
-    const payload = { code: data.code.trim().toUpperCase(), discount_percent: Number(data.discountPercent) || 0, max_uses: data.maxUses ? Number(data.maxUses) : null, expires_at: data.expiresAt || null, active: true };
-    const { data: row, error } = await supabase.from("promo_codes").insert(payload).select().single();
-    if (error) { showToast("Ошибка: " + error.message); return; }
-    setPromoCodes((cs) => [{ id: row.id, code: row.code, discountPercent: row.discount_percent, active: row.active, maxUses: row.max_uses, usedCount: row.used_count, expiresAt: row.expires_at }, ...cs]);
-  }, [showToast]);
-
-  const togglePromoCodeActive = useCallback(async (id, active) => {
-    await supabase.from("promo_codes").update({ active }).eq("id", id);
-    setPromoCodes((cs) => cs.map((c) => (c.id === id ? { ...c, active } : c)));
-  }, []);
-
-  const deletePromoCode = useCallback(async (id) => {
-    await supabase.from("promo_codes").delete().eq("id", id);
-    setPromoCodes((cs) => cs.filter((c) => c.id !== id));
-  }, []);
-
-  const validatePromoCode = useCallback(async (codeInput) => {
-    const code = (codeInput || "").trim().toUpperCase();
-    if (!code) return { ok: false, error: "Введите промокод." };
-    const { data, error } = await supabase.from("promo_codes").select("*").eq("code", code).maybeSingle();
-    if (error || !data) return { ok: false, error: "Промокод не найден." };
-    if (!data.active) return { ok: false, error: "Промокод больше не действует." };
-    if (data.expires_at && new Date(data.expires_at) < new Date()) return { ok: false, error: "Срок действия промокода истёк." };
-    if (data.max_uses && data.used_count >= data.max_uses) return { ok: false, error: "Промокод уже использован максимальное число раз." };
-    return { ok: true, id: data.id, code: data.code, discountPercent: data.discount_percent, usedCount: data.used_count };
-  }, []);
-
-  const registerPromoCodeUse = useCallback(async (id, currentUsedCount) => {
-    await supabase.from("promo_codes").update({ used_count: currentUsedCount + 1 }).eq("id", id);
   }, []);
 
   /* --- Заявки "Заказать своё" --- */
