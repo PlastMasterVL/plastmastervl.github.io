@@ -172,7 +172,7 @@ function ShopProvider({ children }) {
   }, []);
   const loadNews = useCallback(async () => {
     const { data, error } = await supabase.from("news").select("*").order("created_at", { ascending: false });
-    if (!error && data) setNews(data.map((n) => ({ id: n.id, title: n.title, text: n.text, date: n.created_at })));
+    if (!error && data) setNews(data.map((n) => ({ id: n.id, title: n.title, text: n.text, image: n.image, link: n.link, date: n.created_at })));
   }, []);
   const loadPromos = useCallback(async () => {
     const { data, error } = await supabase.from("promos").select("*").order("created_at", { ascending: false });
@@ -464,13 +464,32 @@ function ShopProvider({ children }) {
   }, []);
 
   /* --- Новости (админ) --- */
-  const addNews = useCallback(async (title, text) => {
-    const { data, error } = await supabase.from("news").insert({ title, text }).select().single();
-    if (!error) setNews((ns) => [{ id: data.id, title: data.title, text: data.text, date: data.created_at }, ...ns]);
-  }, []);
+  const addNews = useCallback(async (data) => {
+    const { data: row, error } = await supabase.from("news").insert(data).select().single();
+    if (error) { showToast("Ошибка: " + error.message); return; }
+    setNews((ns) => [{ id: row.id, title: row.title, text: row.text, image: row.image, link: row.link, date: row.created_at }, ...ns]);
+  }, [showToast]);
   const deleteNews = useCallback(async (id) => {
     await supabase.from("news").delete().eq("id", id);
     setNews((ns) => ns.filter((n) => n.id !== id));
+  }, []);
+
+  /* --- Акции (админ) --- */
+  const addPromo = useCallback(async (data) => {
+    const payload = { title: data.title, description: data.description, image: data.image || null, discount: data.discount ? Number(data.discount) : null, end_date: data.endDate || null, product_ids: [] };
+    const { data: row, error } = await supabase.from("promos").insert(payload).select().single();
+    if (error) { showToast("Ошибка: " + error.message); return; }
+    setPromos((ps) => [{ id: row.id, title: row.title, description: row.description, discount: row.discount, endDate: row.end_date, productIds: row.product_ids || [], image: row.image }, ...ps]);
+  }, [showToast]);
+  const updatePromo = useCallback(async (id, data) => {
+    const payload = { title: data.title, description: data.description, image: data.image || null, discount: data.discount ? Number(data.discount) : null, end_date: data.endDate || null };
+    const { data: row, error } = await supabase.from("promos").update(payload).eq("id", id).select().single();
+    if (error) { showToast("Ошибка: " + error.message); return; }
+    setPromos((ps) => ps.map((p) => (p.id === id ? { id: row.id, title: row.title, description: row.description, discount: row.discount, endDate: row.end_date, productIds: row.product_ids || [], image: row.image } : p)));
+  }, [showToast]);
+  const deletePromo = useCallback(async (id) => {
+    await supabase.from("promos").delete().eq("id", id);
+    setPromos((ps) => ps.filter((p) => p.id !== id));
   }, []);
 
   /* --- Заявки "Заказать своё" --- */
@@ -494,7 +513,7 @@ function ShopProvider({ children }) {
     addProduct, updateProduct, deleteProduct,
     addCategory, updateCategory, deleteCategory,
     addHeroSlide, updateHeroSlide, deleteHeroSlide,
-    addReview, moderateReview, addNews, deleteNews, submitCustomRequest,
+    addReview, moderateReview, addNews, deleteNews, addPromo, updatePromo, deletePromo, submitCustomRequest,
   };
 
   return <ShopContext.Provider value={value}>{children}</ShopContext.Provider>;
@@ -1030,10 +1049,13 @@ function HomePage({ go, openProduct }) {
           <SectionHeader eyebrow="Что нового" title="📰 Новости мастерской" action={<button onClick={() => go("news")} className="hidden md:flex items-center gap-1 text-[14px] text-accent-dark font-medium">Все новости <ArrowRight size={14} /></button>} />
           <div className="grid md:grid-cols-3 gap-5">
             {news.slice(0, 3).map((n) => (
-              <div key={n.id} className="p-5 rounded-2xl bg-white border border-line/70">
-                <div className="text-[12px] text-stone mb-1.5">{formatDate(n.date)}</div>
-                <div className="font-display text-[17px] text-ink leading-snug mb-1.5">{n.title}</div>
-                <p className="text-[13.5px] text-stone leading-relaxed">{n.text}</p>
+              <div key={n.id} className="rounded-2xl bg-white border border-line/70 overflow-hidden">
+                {n.image && <img src={n.image} alt={n.title} className="w-full h-32 object-cover" />}
+                <div className="p-5">
+                  <div className="text-[12px] text-stone mb-1.5">{formatDate(n.date)}</div>
+                  <div className="font-display text-[17px] text-ink leading-snug mb-1.5">{n.title}</div>
+                  <p className="text-[13.5px] text-stone leading-relaxed">{n.text}</p>
+                </div>
               </div>
             ))}
           </div>
@@ -1873,10 +1895,14 @@ function NewsPage() {
       <h1 className="font-display text-[28px] md:text-[34px] text-ink mb-6">📰 Новости мастерской</h1>
       <div className="flex flex-col gap-4 max-w-2xl">
         {news.map((n) => (
-          <div key={n.id} className="p-5 rounded-2xl bg-white border border-line/70">
-            <div className="text-[12.5px] text-stone mb-1.5">{formatDate(n.date)}</div>
-            <div className="font-display text-[19px] text-ink mb-1.5">{n.title}</div>
-            <p className="text-[14.5px] text-stone leading-relaxed">{n.text}</p>
+          <div key={n.id} className="rounded-2xl bg-white border border-line/70 overflow-hidden">
+            {n.image && <img src={n.image} alt={n.title} className="w-full h-44 object-cover" />}
+            <div className="p-5">
+              <div className="text-[12.5px] text-stone mb-1.5">{formatDate(n.date)}</div>
+              <div className="font-display text-[19px] text-ink mb-1.5">{n.title}</div>
+              <p className="text-[14.5px] text-stone leading-relaxed">{n.text}</p>
+              {n.link && <a href={n.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[13.5px] text-accent-dark font-medium mt-2">Подробнее <ArrowRight size={14} /></a>}
+            </div>
           </div>
         ))}
       </div>
@@ -2553,42 +2579,194 @@ function AdminReviews() {
   );
 }
 
+function emptyPromoForm() {
+  return { title: "", description: "", image: "", discount: "", endDate: "" };
+}
+
 function AdminPromos() {
-  const { promos } = useShop();
+  const { promos, addPromo, updatePromo, deletePromo, showToast } = useShop();
+  const [editing, setEditing] = useState(null); // null | "new" | promo.id
+  const [form, setForm] = useState(emptyPromoForm());
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const fileRef = useRef(null);
+
+  const startEdit = (p) => { setForm({ title: p.title, description: p.description || "", image: p.image || "", discount: p.discount ? String(p.discount) : "", endDate: p.endDate ? String(p.endDate).slice(0, 10) : "" }); setEditing(p.id); };
+  const startNew = () => { setForm(emptyPromoForm()); setEditing("new"); };
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop();
+      const path = `promos/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error } = await supabase.storage.from("product-images").upload(path, file);
+      if (error) { showToast("Не удалось загрузить фото: " + error.message); return; }
+      const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+      setForm((f) => ({ ...f, image: data.publicUrl }));
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const save = async () => {
+    if (!form.title.trim()) return;
+    setSaving(true);
+    try {
+      if (editing === "new") await addPromo(form);
+      else await updatePromo(editing, form);
+      setEditing(null);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="max-w-lg">
+        <h3 className="font-display text-[20px] text-ink mb-4">{editing === "new" ? "Добавить акцию" : "Редактировать акцию"}</h3>
+        <div className="flex flex-col gap-3.5">
+          <Field label="Заголовок" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="Например: Скидка на подарочные наборы" />
+          <div>
+            <label className="text-[13px] text-stone mb-1.5 block">Описание</label>
+            <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={3} className="w-full p-3 rounded-xl border border-line outline-none text-[14px] resize-none focus:border-accent bg-white" />
+          </div>
+          <div>
+            <label className="text-[13px] text-stone mb-1.5 block">Картинка</label>
+            <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
+            <button onClick={() => fileRef.current?.click()} disabled={uploading} className="flex items-center gap-2 px-4 py-3 rounded-xl border border-dashed border-line text-[13.5px] text-stone hover:border-accent disabled:opacity-50">
+              <Upload size={16} /> {uploading ? "Загружаем…" : "Загрузить фото"}
+            </button>
+            {form.image && (
+              <div className="relative w-full mt-2.5">
+                <img src={form.image} className="w-full h-32 object-cover rounded-xl" alt="" />
+                <button onClick={() => setForm((f) => ({ ...f, image: "" }))} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-ink text-cream flex items-center justify-center"><X size={13} /></button>
+              </div>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3.5">
+            <Field label="Скидка, % (необязательно)" type="number" value={form.discount} onChange={(e) => setForm((f) => ({ ...f, discount: e.target.value }))} />
+            <div>
+              <label className="text-[13px] text-stone mb-1.5 block">Действует до (необязательно)</label>
+              <input type="date" value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} className="w-full p-3 rounded-xl border border-line outline-none text-[14px] bg-white" />
+            </div>
+          </div>
+          <div className="flex gap-3 mt-2">
+            <PrimaryButton onClick={save} disabled={saving || uploading}>{saving ? "Сохраняем…" : "Сохранить"}</PrimaryButton>
+            <SecondaryButton onClick={() => setEditing(null)}>Отмена</SecondaryButton>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <p className="text-[13.5px] text-stone mb-4">Акции добавляются напрямую через таблицу promos в Supabase (раздел Table Editor). Здесь — список текущих акций.</p>
-      <div className="flex flex-col gap-2.5">
-        {promos.map((p) => (
-          <div key={p.id} className="p-4 rounded-2xl bg-white border border-line/70">
-            <div className="text-[14.5px] font-medium text-ink">{p.title}</div>
-            <div className="text-[13px] text-stone">Скидка {p.discount}% · до {formatDate(p.endDate)}</div>
-          </div>
-        ))}
-      </div>
+      <PrimaryButton className="mb-5" onClick={startNew}><Plus size={16} /> Добавить акцию</PrimaryButton>
+      {promos.length === 0 ? (
+        <EmptyState icon={Tag} title="Акций пока нет" subtitle="Добавьте первую акцию — она появится на главной и странице «Акции»." />
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {promos.map((p) => (
+            <div key={p.id} className="flex items-center gap-3 p-3 rounded-2xl bg-white border border-line/70">
+              {p.image ? <img src={p.image} className="w-16 h-12 rounded-lg object-cover shrink-0" alt="" /> : <div className="w-16 h-12 rounded-lg bg-line/40 shrink-0" />}
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px] text-ink line-clamp-1">{p.title}</div>
+                <div className="text-[12px] text-stone">{p.discount ? `Скидка ${p.discount}%` : "Без скидки"}{p.endDate ? ` · до ${formatDate(p.endDate)}` : ""}</div>
+              </div>
+              <button onClick={() => startEdit(p)} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-line/60 text-stone shrink-0"><Edit2 size={15} /></button>
+              <button onClick={() => deletePromo(p.id)} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-line/60 text-red-500 shrink-0"><Trash size={15} /></button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
+function emptyNewsForm() {
+  return { title: "", text: "", image: "", link: "" };
+}
+
 function AdminNews() {
-  const { news, addNews, deleteNews } = useShop();
-  const [form, setForm] = useState({ title: "", text: "" });
+  const { news, addNews, deleteNews, showToast } = useShop();
+  const [editing, setEditing] = useState(null); // null | "new"
+  const [form, setForm] = useState(emptyNewsForm());
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const fileRef = useRef(null);
+
+  const startNew = () => { setForm(emptyNewsForm()); setEditing("new"); };
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop();
+      const path = `news/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error } = await supabase.storage.from("product-images").upload(path, file);
+      if (error) { showToast("Не удалось загрузить фото: " + error.message); return; }
+      const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+      setForm((f) => ({ ...f, image: data.publicUrl }));
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const save = async () => {
+    if (!form.title.trim() || !form.text.trim()) return;
+    setSaving(true);
+    try {
+      await addNews({ title: form.title.trim(), text: form.text.trim(), image: form.image || null, link: form.link.trim() || null });
+      setEditing(null);
+      setForm(emptyNewsForm());
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div>
-      <div className="max-w-lg mb-6 p-4 rounded-2xl bg-white border border-line/70">
-        <div className="text-[14px] font-medium text-ink mb-3">Опубликовать новость</div>
-        <div className="flex flex-col gap-3">
-          <Field label="Заголовок" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
-          <textarea value={form.text} onChange={(e) => setForm((f) => ({ ...f, text: e.target.value }))} placeholder="Текст новости" rows={3} className="w-full p-3 rounded-xl border border-line outline-none text-[14px] resize-none focus:border-accent" />
-          <PrimaryButton className="w-fit" onClick={() => { if (!form.title || !form.text) return; addNews(form.title, form.text); setForm({ title: "", text: "" }); }}>Опубликовать</PrimaryButton>
+      {editing === "new" ? (
+        <div className="max-w-lg mb-6 p-4 rounded-2xl bg-white border border-line/70">
+          <div className="text-[14px] font-medium text-ink mb-3">Новая новость</div>
+          <div className="flex flex-col gap-3">
+            <Field label="Заголовок" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
+            <textarea value={form.text} onChange={(e) => setForm((f) => ({ ...f, text: e.target.value }))} placeholder="Текст новости" rows={3} className="w-full p-3 rounded-xl border border-line outline-none text-[14px] resize-none focus:border-accent" />
+            <div>
+              <label className="text-[13px] text-stone mb-1.5 block">Картинка (необязательно)</label>
+              <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
+              <button onClick={() => fileRef.current?.click()} disabled={uploading} className="flex items-center gap-2 px-4 py-3 rounded-xl border border-dashed border-line text-[13.5px] text-stone hover:border-accent disabled:opacity-50">
+                <Upload size={16} /> {uploading ? "Загружаем…" : "Загрузить фото"}
+              </button>
+              {form.image && (
+                <div className="relative w-full mt-2.5">
+                  <img src={form.image} className="w-full h-32 object-cover rounded-xl" alt="" />
+                  <button onClick={() => setForm((f) => ({ ...f, image: "" }))} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-ink text-cream flex items-center justify-center"><X size={13} /></button>
+                </div>
+              )}
+            </div>
+            <Field label="Ссылка (необязательно)" value={form.link} onChange={(e) => setForm((f) => ({ ...f, link: e.target.value }))} placeholder="https://..." />
+            <div className="flex gap-3">
+              <PrimaryButton onClick={save} disabled={saving || uploading}>{saving ? "Публикуем…" : "Опубликовать"}</PrimaryButton>
+              <SecondaryButton onClick={() => setEditing(null)}>Отмена</SecondaryButton>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <PrimaryButton className="mb-5" onClick={startNew}><Plus size={16} /> Добавить новость</PrimaryButton>
+      )}
       <div className="flex flex-col gap-2.5">
         {news.map((n) => (
-          <div key={n.id} className="p-3.5 rounded-2xl bg-white border border-line/70 flex items-center justify-between gap-3">
-            <div className="min-w-0">
+          <div key={n.id} className="p-3.5 rounded-2xl bg-white border border-line/70 flex items-center gap-3">
+            {n.image ? <img src={n.image} className="w-14 h-14 rounded-lg object-cover shrink-0" alt="" /> : null}
+            <div className="min-w-0 flex-1">
               <div className="text-[14px] font-medium text-ink line-clamp-1">{n.title}</div>
-              <div className="text-[12px] text-stone">{formatDate(n.date)}</div>
+              <div className="text-[12px] text-stone">{formatDate(n.date)}{n.link ? " · со ссылкой" : ""}</div>
             </div>
             <button onClick={() => deleteNews(n.id)} className="text-stone hover:text-red-500 shrink-0"><Trash size={15} /></button>
           </div>
