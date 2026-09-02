@@ -1246,6 +1246,12 @@ function ProductPage({ product, go, back }) {
 
   useEffect(() => { setActiveImg(0); setColor(product.colors?.[0] || null); setQty(1); }, [product.id]);
 
+  useEffect(() => {
+    const prevTitle = document.title;
+    document.title = `${product.name} — PlastMaster`;
+    return () => { document.title = prevTitle; };
+  }, [product.id, product.name]);
+
   const productReviews = reviews.filter((r) => r.productId === product.id && r.approved);
   const isFav = favorites.includes(product.id);
   const price = salePrice(product);
