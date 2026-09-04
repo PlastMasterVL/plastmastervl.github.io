@@ -19,7 +19,7 @@ const STATUS_LABELS = {
   cancelled: { label: "Отменён", emoji: "❌", color: "#B5504B" },
 };
 
-const ADMIN_EMAILS = ["mamaevv35@gmail.com"]; // почта владельца мастерской PlastMaster
+const ADMIN_EMAILS = ["mamaevv35@gmail.com"]; // почта владельца мастерской PlastMasterVL
 
 /* =========================================================
    УТИЛИТЫ
@@ -50,7 +50,7 @@ function salePrice(p) {
 
 async function shareProduct(product, showToast) {
   const url = `${window.location.origin}${window.location.pathname.replace(/\/$/, "")}`.replace(/\/product\/.*$/, "") + `/product/${product.id}`;
-  const shareData = { title: product.name, text: `${product.name} — ${formatPrice(salePrice(product))} на сайте PlastMaster`, url };
+  const shareData = { title: product.name, text: `${product.name} — ${formatPrice(salePrice(product))} на сайте PlastMasterVL`, url };
   try {
     if (navigator.share) {
       await navigator.share(shareData);
@@ -594,16 +594,15 @@ function Logo({ size = 38 }) {
       <svg width={size} height={size} viewBox="0 0 48 48" fill="none">
         <defs>
           <linearGradient id="logoGrad" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stopColor="#C77B4A" />
-            <stop offset="1" stopColor="#8B4A2A" />
+            <stop offset="0" stopColor="#CB11AB" />
+            <stop offset="1" stopColor="#1A1A1A" />
           </linearGradient>
         </defs>
         <rect x="3" y="3" width="42" height="42" rx="14" fill="url(#logoGrad)" />
-        <text x="24" y="32" textAnchor="middle" fontFamily="Fraunces, Georgia, serif" fontWeight="600" fontSize="24" fill="#FAF7F2">P</text>
-        <circle cx="35" cy="35" r="3.2" fill="#FAF7F2" opacity="0.9" />
+        <polyline points="11,34 11,13 24,31 37,13 37,34" fill="none" stroke="#FFFFFF" strokeWidth="5.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       <div className="leading-none">
-        <div className="font-display text-[19px] tracking-tight text-ink">PlastMaster</div>
+        <div className="font-display text-[16px] tracking-tight text-ink">PlastMasterVL</div>
         <div className="text-[9.5px] tracking-[0.18em] uppercase text-stone">мастерская 3D</div>
       </div>
     </div>
@@ -935,7 +934,7 @@ function Footer({ go }) {
         </div>
         <div className="h-px bg-cream/10 my-8" />
         <div className="text-[12.5px] text-cream/40 flex flex-col md:flex-row justify-between gap-2">
-          <span>© 2026 Мастерская «PlastMaster».</span>
+          <span>© 2026 Мастерская «PlastMasterVL».</span>
           <button onClick={() => go("privacy")} className="text-left hover:text-cream/70">Политика конфиденциальности</button>
         </div>
       </Section>
@@ -954,7 +953,7 @@ function Footer({ go }) {
 function HeroCarousel({ go }) {
   const { heroSlides } = useShop();
   const [index, setIndex] = useState(0);
-  const slides = heroSlides.length > 0 ? heroSlides : [{ id: "placeholder", title: "Добро пожаловать!", text: "Добавьте слайды в разделе «Баннер» админ-панели.", image: PLACEHOLDER_IMG("PlastMaster", 1200, 500, "1A1A1A", "CB11AB"), ctaText: "В каталог", ctaPage: "catalog" }];
+  const slides = heroSlides.length > 0 ? heroSlides : [{ id: "placeholder", title: "Добро пожаловать!", text: "Добавьте слайды в разделе «Баннер» админ-панели.", image: PLACEHOLDER_IMG("PlastMasterVL", 1200, 500, "1A1A1A", "CB11AB"), ctaText: "В каталог", ctaPage: "catalog" }];
 
   useEffect(() => {
     if (index >= slides.length) setIndex(0);
@@ -1248,7 +1247,7 @@ function ProductPage({ product, go, back }) {
 
   useEffect(() => {
     const prevTitle = document.title;
-    document.title = `${product.name} — PlastMaster`;
+    document.title = `${product.name} — PlastMasterVL`;
     return () => { document.title = prevTitle; };
   }, [product.id, product.name]);
 
@@ -1557,7 +1556,7 @@ function CheckoutPage({ go }) {
 
   if (orderResult) {
     const waMessage = encodeURIComponent(
-      `Здравствуйте! Оформил(а) заказ №${orderResult.number} на сайте PlastMaster.\n` +
+      `Здравствуйте! Оформил(а) заказ №${orderResult.number} на сайте PlastMasterVL.\n` +
       `Состав заказа:\n${orderResult.items.map((i) => `— ${i.name}${i.color ? ` (${i.color})` : ""} × ${i.qty}`).join("\n")}\n` +
       (orderResult.promoCode ? `Промокод: ${orderResult.promoCode} (скидка ${formatPrice(orderResult.discountAmount || 0)})\n` : "") +
       `Сумма: ${formatPrice(orderResult.total)}\n` +
@@ -2103,7 +2102,7 @@ function ContactsBlock({ compact }) {
   return (
     <div className={`dark-surface rounded-[24px] bg-ink text-cream p-7 md:p-10 grid md:grid-cols-2 gap-6 ${compact ? "" : ""}`}>
       <div>
-        <div className="text-[11px] tracking-[0.18em] uppercase text-accent mb-2">Мастерская «PlastMaster»</div>
+        <div className="text-[11px] tracking-[0.18em] uppercase text-accent mb-2">Мастерская «PlastMasterVL»</div>
         <h3 className="font-display text-[24px] mb-4">📞 Контакты</h3>
         <div className="flex flex-col gap-3 text-[14.5px] text-cream/85">
           <span className="flex items-center gap-2.5"><Phone size={16} /> +7 968 152-36-79</span>
@@ -2137,7 +2136,7 @@ function PrivacyPage() {
       <div className="max-w-2xl flex flex-col gap-6 text-[14.5px] text-ink/85 leading-relaxed">
         <div>
           <h2 className="font-display text-[18px] text-ink mb-2">1. Общие положения</h2>
-          <p>Настоящая политика описывает, какие данные собирает сайт и приложение «PlastMaster» (далее — «сервис»), для чего они используются и как защищаются. Используя сервис, вы соглашаетесь с условиями этой политики.</p>
+          <p>Настоящая политика описывает, какие данные собирает сайт и приложение «PlastMasterVL» (далее — «сервис»), для чего они используются и как защищаются. Используя сервис, вы соглашаетесь с условиями этой политики.</p>
         </div>
 
         <div>
@@ -3159,7 +3158,7 @@ function AuthRoute({ go }) {
 }
 
 function FloatingWhatsApp() {
-  const message = encodeURIComponent("Здравствуйте! У меня есть вопрос по сайту PlastMaster.");
+  const message = encodeURIComponent("Здравствуйте! У меня есть вопрос по сайту PlastMasterVL.");
   return (
     <a
       href={`https://wa.me/79681523679?text=${message}`}
