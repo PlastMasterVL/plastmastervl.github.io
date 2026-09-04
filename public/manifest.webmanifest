@@ -1,6 +1,6 @@
 {
-  "name": "PlastMaster — мастерская 3D-печати",
-  "short_name": "PlastMaster",
+  "name": "PlastMasterVL — мастерская 3D-печати",
+  "short_name": "PlastMasterVL",
   "description": "Изделия ручной работы и на заказ из 3D-печати: посуда, декор, игрушки, брелоки, подарки.",
   "start_url": "./",
   "scope": "./",
