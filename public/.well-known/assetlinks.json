@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "io.github.plastmastervl.twa",
+    "sha256_cert_fingerprints": ["00:38:D7:50:D5:D5:66:9A:77:71:E6:4E:6C:72:1A:C9:9A:95:62:17:E5:03:A1:82:AA:26:8D:62:F9:1D:9F:40"]
+  }
+}]
